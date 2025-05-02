@@ -1,0 +1,43 @@
+﻿<?xml version="1.0" encoding="UTF-8"?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:1.2"
+       xmlns:ispring="http://ispringsolutions.com/custom-xliff"
+       version="1.2">
+  <file datatype="x-is-ispring-presentation"
+        ispring:id="presentation:{DUMMY-ID}"
+        original="presentation"
+        source-language="nb">
+    <body>
+      <group id="presentation.slides">
+        <group id="slide1">
+          <group id="slide1.shapes">
+            <group id="slide1.shapes.textbox1">
+              <trans-unit id="slide1.shapes.textbox1.text">
+                <source>
+                  <g ctype="x-is-par" id="p0">
+                    <g ctype="x-is-run" id="p0_r0" ispringstart-data="d0">Leksjon 1 - Innledning</g>
+                  </g>
+                  <g ctype="x-is-par" id="p1">
+                    <g ctype="x-is-run" id="p1_r0" ispringstart-data="d1">Leksjon 2 - Lover og forskrifter</g>
+                  </g>
+                  <g ctype="x-is-par" id="p2">
+                    <g ctype="x-is-run" id="p2_r0" ispringstart-data="d2">Leksjon 3 - Arbeidsmiljø, ansvar og konsekvenser</g>
+                  </g>
+                  <g ctype="x-is-par" id="p3">
+                    <g ctype="x-is-run" id="p3_r0" ispringstart-data="d3">Leksjon 4 - Ytre miljø - Miljøvern</g>
+                  </g>
+                  <g ctype="x-is-par" id="p4">
+                    <g ctype="x-is-run" id="p4_r0" ispringstart-data="d4">Leksjon 5 - Sikkerhetsbestemmelser arbeidsutstyr</g>
+                  </g>
+                  <g ctype="x-is-par" id="p5">
+                    <g ctype="x-is-run" id="p5_r0" ispringstart-data="d5">Leksjon 6 - Farlig gods</g>
+                  </g>
+                </source>
+                <target/>
+              </trans-unit>
+            </group>
+          </group>
+        </group>
+      </group>
+    </body>
+  </file>
+</xliff>
