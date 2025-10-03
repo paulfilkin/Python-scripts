@@ -1,4 +1,3 @@
-
 # XLIFF Quality Report Generator
 
 A Python tool for analyzing translation quality evaluation data from XLIFF files and generating comprehensive PDF reports with statistics, visualizations, and detailed segment breakdowns.
@@ -117,17 +116,38 @@ Automatically categorizes issues based on description keywords:
 - **Omission**: Missing content
 - **Other**: Unclassified issues
 
-## Example Output Structure
+### Example (see the attached fr-FR folder)
+
+View the [sample quality report PDF](./fr-FR/reports/quality_report.pdf) generated from the example files.
+
+Given a folder structure like this:
 
 ```
-your_xliff_folder/
-├── file1.sdlxliff
-├── file2.sdlxliff
+fr-FR/
+├── bees_EN.txt.sdlxliff
+├── butterflowy_EN.txt.sdlxliff
+└── dogs_EN.txt.sdlxliff
+```
+
+Run the script:
+
+```bash
+python xliff_quality_report.py fr-FR
+```
+
+The tool will process all `.sdlxliff` files and generate:
+
+```
+fr-FR/
+├── bees_EN.txt.sdlxliff
+├── butterflowy_EN.txt.sdlxliff
+├── dogs_EN.txt.sdlxliff
 └── reports/
-    ├── quality_report.pdf
-    ├── chart_0.png
-    ├── chart_1.png
-    └── overall_distribution.png
+    ├── quality_report.pdf          # Main consolidated report
+    ├── chart_0.png                 # Distribution chart for file 1
+    ├── chart_1.png                 # Distribution chart for file 2
+    ├── chart_2.png                 # Distribution chart for file 3
+    └── overall_distribution.png    # Batch-level distribution chart
 ```
 
 ## Error Handling
