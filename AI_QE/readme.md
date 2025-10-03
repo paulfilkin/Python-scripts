@@ -1,6 +1,6 @@
 # XLIFF Quality Report Generator
 
-A Python tool for analyzing translation quality evaluation data from SDLXLIFF files that have been from a Smart Review (requires an AI Essentials subscription) and generating comprehensive PDF reports with statistics, visualizations, and detailed segment breakdowns.
+A Python tool for analyzing translation quality evaluation data from SDLXLIFF files that have been through a "Smart Review" (requires an AI Essentials subscription) and generating comprehensive PDF reports with statistics, visualizations, and detailed segment breakdowns.
 
 ## Features
 
