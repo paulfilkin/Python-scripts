@@ -32,9 +32,13 @@ pip install openai reportlab matplotlib numpy python-dotenv
 ```
 ### Project Structure
 
+<details>
+<summary>Tree view</summary>
+
+```text
 really-smart-review/
-├── really_smart_review.py     # Main entry point
-├── .env                        # API key storage (create this)
+├── really_smart_review.py
+├── .env
 ├── core/
 │   ├── __init__.py
 │   ├── config.py
@@ -47,8 +51,7 @@ really-smart-review/
 └── reports/
     ├── __init__.py
     └── enhanced_report.py
-
-
+```
 
 **Configure API Key**
 
