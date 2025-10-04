@@ -52,7 +52,7 @@ really-smart-review/
     ├── __init__.py
     └── enhanced_report.py
 ```
-
+</details>
 **Configure API Key**
 
 Create a `.env` file in the project root directory (same folder as `really_smart_review.py`). This file stores your API key securely and is automatically loaded by the application. 
