@@ -75,6 +75,8 @@ touch core/__init__.py prompts/__init__.py reports/__init__.py .env
 
 1. **Configure API Key**
 
+Create a `.env` file in the project root directory (same folder as `really_smart_review.py`). This file stores your API key securely and is automatically loaded by the application. 
+
 Edit the `.env` file and add your OpenAI API key:
 
 ```
