@@ -33,7 +33,7 @@ pip install openai reportlab matplotlib numpy python-dotenv
 ### Project Structure
 
 <details>
-<summary>Tree view</summary>
+<summary>Tree view (click to view)</summary>
 
 ```text
 really-smart-review/
