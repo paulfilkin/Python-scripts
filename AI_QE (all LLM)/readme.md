@@ -1,4 +1,3 @@
-
 # Another way to use an LLM to review your files!
 
 LLM-Powered Translation Quality Analysis for SDLXLIFF files
@@ -28,14 +27,11 @@ This LLM Review uses Large Language Models (specifically OpenAI's GPT models) to
 ### Setup
 
 1. **Install Dependencies**
-
 ```bash
 pip install openai reportlab matplotlib numpy python-dotenv
-~~~
-
-1. **Project Structure**
-
 ```
+### Project Structure
+
 really-smart-review/
 ├── really_smart_review.py     # Main entry point
 ├── .env                        # API key storage (create this)
@@ -51,29 +47,10 @@ really-smart-review/
 └── reports/
     ├── __init__.py
     └── enhanced_report.py
-```
 
-1. **Create Required Files**
 
-Windows PowerShell:
 
-```powershell
-# Create __init__.py files
-New-Item -ItemType File -Path "core\__init__.py" -Force
-New-Item -ItemType File -Path "prompts\__init__.py" -Force
-New-Item -ItemType File -Path "reports\__init__.py" -Force
-
-# Create .env file
-New-Item -ItemType File -Path ".env" -Force
-```
-
-Unix/Mac/Linux:
-
-```bash
-touch core/__init__.py prompts/__init__.py reports/__init__.py .env
-```
-
-1. **Configure API Key**
+**Configure API Key**
 
 Create a `.env` file in the project root directory (same folder as `really_smart_review.py`). This file stores your API key securely and is automatically loaded by the application. 
 
@@ -83,9 +60,11 @@ Edit the `.env` file and add your OpenAI API key:
 OPENAI_API_KEY=sk-your-actual-api-key-here
 ```
 
+
+
 ## Usage
 
-### Interactive Mode (Recommended for First Use)
+### Interactive Mode
 
 ```bash
 python really_smart_review.py
