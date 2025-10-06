@@ -1,9 +1,10 @@
 """
 XLIFF/SDLXLIFF file handling for Really Smart Review.
 Parses segments with context and injects structured comments.
+Uses lxml for proper namespace preservation.
 """
 
-import xml.etree.ElementTree as ET
+from lxml import etree
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 import uuid
@@ -11,18 +12,12 @@ from datetime import datetime
 
 
 class XLIFFHandler:
-    """Handle XLIFF file parsing and comment injection."""
+    """Handle XLIFF file parsing and comment injection with proper namespace preservation."""
     
     NAMESPACES = {
         'xliff': 'urn:oasis:names:tc:xliff:document:1.2',
         'sdl': 'http://sdl.com/FileTypes/SdlXliff/1.0'
     }
-    
-    @staticmethod
-    def register_namespaces():
-        """Register namespaces to preserve them in output."""
-        for prefix, uri in XLIFFHandler.NAMESPACES.items():
-            ET.register_namespace(prefix, uri)
     
     @staticmethod
     def parse_file(xliff_path: Path) -> Dict[str, Any]:
@@ -32,9 +27,8 @@ class XLIFFHandler:
         Returns:
             Dictionary containing segments, metadata, and file tree
         """
-        XLIFFHandler.register_namespaces()
-        
-        tree = ET.parse(xliff_path)
+        parser = etree.XMLParser(remove_blank_text=False, strip_cdata=False)
+        tree = etree.parse(str(xliff_path), parser)
         root = tree.getroot()
         
         # Extract file metadata
@@ -114,17 +108,24 @@ class XLIFFHandler:
         comment_parts = []
         fmt = config['comment_generation']['format']
         
+        # Get score (handle None)
+        score = evaluation.get('overall_score')
+        
         # QE Score
         if fmt['include_score']:
-            score = evaluation.get('overall_score', 0)
-            comment_parts.append(f"QE Score: {score}")
+            if score is not None:
+                comment_parts.append(f"QE Score: {score}")
+            else:
+                comment_parts.append(f"QE Score: Error")
         
         # QE Band (score range)
         if fmt['include_band']:
-            score = evaluation.get('overall_score', 0)
-            band_start = (score // 10) * 10
-            band_end = band_start + 10
-            comment_parts.append(f"QE Band: {band_start}-{band_end}")
+            if score is not None:
+                band_start = (score // 10) * 10
+                band_end = band_start + 10
+                comment_parts.append(f"QE Band: {band_start}-{band_end}")
+            else:
+                comment_parts.append(f"QE Band: Error")
         
         # Issue categories
         if fmt['include_categories'] and evaluation.get('issues'):
@@ -171,18 +172,27 @@ class XLIFFHandler:
         """
         ns = XLIFFHandler.NAMESPACES
         
+        # Build namespace map for XPath
+        nsmap = {'xliff': ns['xliff'], 'sdl': ns['sdl']}
+        
         # Find or create doc-info element
-        doc_info = root.find('.//sdl:doc-info', ns)
+        doc_info = root.find('.//sdl:doc-info', nsmap)
         
         if doc_info is None:
-            # Create doc-info as first child of root
-            doc_info = ET.Element('{http://sdl.com/FileTypes/SdlXliff/1.0}doc-info')
+            # Create doc-info as first child of root with proper namespace
+            doc_info = etree.Element(
+                '{http://sdl.com/FileTypes/SdlXliff/1.0}doc-info',
+                nsmap={'sdl': ns['sdl']}
+            )
             root.insert(0, doc_info)
         
         # Get or create cmt-defs
-        cmt_defs = doc_info.find('sdl:cmt-defs', ns)
+        cmt_defs = doc_info.find('sdl:cmt-defs', nsmap)
         if cmt_defs is None:
-            cmt_defs = ET.SubElement(doc_info, '{http://sdl.com/FileTypes/SdlXliff/1.0}cmt-defs')
+            cmt_defs = etree.SubElement(
+                doc_info,
+                '{http://sdl.com/FileTypes/SdlXliff/1.0}cmt-defs'
+            )
         
         # Build a mapping of segment_id -> comment_id first
         comment_map = {}
@@ -195,29 +205,41 @@ class XLIFFHandler:
             comment_id = str(uuid.uuid4())
             comment_map[segment_id] = comment_id
             
-            # Create cmt-def
-            cmt_def = ET.SubElement(cmt_defs, '{http://sdl.com/FileTypes/SdlXliff/1.0}cmt-def', id=comment_id)
-            comments = ET.SubElement(cmt_def, 'Comments')
+            # Create cmt-def with proper namespace
+            cmt_def = etree.SubElement(
+                cmt_defs,
+                '{http://sdl.com/FileTypes/SdlXliff/1.0}cmt-def',
+                id=comment_id
+            )
+            
+            # CRITICAL: Comments and Comment MUST be in null namespace
+            # Force empty default namespace with nsmap
+            comments = etree.Element('Comments', nsmap={None: ''})
+            cmt_def.append(comments)
             
             severity = evaluation.get('trados_severity', 'Low')
             
-            comment = ET.SubElement(comments, 'Comment',
-                                severity=severity,
-                                user="smart-review",
-                                date=datetime.now().isoformat(),
-                                version="1.0")
+            # Comment element also in null namespace
+            comment = etree.Element(
+                'Comment',
+                severity=severity,
+                user="smart-review",
+                date=datetime.now().isoformat(),
+                version="1.0"
+            )
             comment.text = evaluation['comment']
+            comments.append(comment)
         
         # Now link comments to their segments
-        trans_units = root.findall('.//xliff:trans-unit', ns)
+        trans_units = root.findall('.//xliff:trans-unit', nsmap)
         
         for trans_unit in trans_units:
-            target = trans_unit.find('xliff:target', ns)
+            target = trans_unit.find('xliff:target', nsmap)
             if target is None:
                 continue
             
             # Find all mrk elements with mtype="seg" at this level
-            for target_mrk in target.findall('xliff:mrk[@mtype="seg"]', ns):
+            for target_mrk in target.findall('xliff:mrk[@mtype="seg"]', nsmap):
                 seg_id = target_mrk.get('mid')
                 
                 # Check if this segment has a comment
@@ -225,13 +247,15 @@ class XLIFFHandler:
                     comment_id = comment_map[seg_id]
                     
                     # Check if already wrapped (avoid double-wrapping)
-                    existing_comment = target_mrk.find('xliff:mrk[@mtype="x-sdl-comment"]', ns)
+                    existing_comment = target_mrk.find('xliff:mrk[@mtype="x-sdl-comment"]', nsmap)
                     if existing_comment is not None:
                         continue
                     
-                    # Create comment wrapper
-                    comment_mrk = ET.Element('{urn:oasis:names:tc:xliff:document:1.2}mrk',
-                                        mtype='x-sdl-comment')
+                    # Create comment wrapper with proper namespace
+                    comment_mrk = etree.Element(
+                        '{urn:oasis:names:tc:xliff:document:1.2}mrk',
+                        mtype='x-sdl-comment'
+                    )
                     comment_mrk.set('{http://sdl.com/FileTypes/SdlXliff/1.0}cid', comment_id)
                     
                     # Move all children and text to comment wrapper
@@ -249,24 +273,39 @@ class XLIFFHandler:
     
     @staticmethod
     def save_annotated_xliff(input_path: Path, output_path: Path, 
-                            evaluations: List[Dict[str, Any]]):
+                            evaluations: List[Dict[str, Any]],
+                            parsed_tree=None, parsed_root=None):
         """
-        Save XLIFF file with injected comments.
+        Save XLIFF file with injected comments using lxml for proper namespace preservation.
         
         Args:
-            input_path: Original XLIFF file
+            input_path: Original XLIFF file (only used if tree not provided)
             output_path: Where to save annotated file
             evaluations: List of segment evaluations with comments
+            parsed_tree: Pre-parsed tree (optional, avoids re-parsing)
+            parsed_root: Pre-parsed root (optional, avoids re-parsing)
         """
-        # Parse original file
-        data = XLIFFHandler.parse_file(input_path)
+        # Use pre-parsed tree if available, otherwise parse
+        if parsed_tree is not None and parsed_root is not None:
+            tree = parsed_tree
+            root = parsed_root
+        else:
+            # Fallback: parse the file
+            data = XLIFFHandler.parse_file(input_path)
+            tree = data['tree']
+            root = data['root']
         
         # Inject all comments
         tree = XLIFFHandler.inject_comments_to_xliff(
-            data['tree'], 
-            data['root'], 
+            tree, 
+            root, 
             evaluations
         )
         
-        # Save modified tree
-        tree.write(str(output_path), encoding='utf-8', xml_declaration=True)
+        # Save with lxml - this preserves namespaces perfectly
+        tree.write(
+            str(output_path),
+            encoding='utf-8',
+            xml_declaration=True,
+            pretty_print=False
+        )
