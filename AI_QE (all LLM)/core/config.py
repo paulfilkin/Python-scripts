@@ -23,6 +23,13 @@ def get_default_config() -> Dict[str, Any]:
             "target": "auto",
             "enable_language_specific_checks": True
         },
+
+        "context_optimization": {
+            "max_chars_per_segment": 200,
+            "max_neighbors_per_side": 4,
+            "min_segment_length": 3,
+            "include_target_in_context": False  # Future: allow toggling
+        },
         
         "analysis_dimensions": {
             "accuracy": {
