@@ -266,10 +266,11 @@ def create_file_section(result, idx, chart_dir, small_style, styles, heading_sty
         elements.append(Image(str(score_chart_path), width=12*cm, height=6*cm))
         elements.append(Spacer(1, 12))
     
-    # Critical issues
+    # Critical issues - handle None scores safely
     critical_issues = []
     for eval in evaluations:
-        if eval.get('overall_score', 100) < 70:
+        score = eval.get('overall_score')
+        if score is not None and score < 70:
             critical_issues.append(eval)
     
     if critical_issues:
@@ -285,9 +286,12 @@ def create_file_section(result, idx, chart_dir, small_style, styles, heading_sty
             if len(explanation) > 200:
                 explanation = explanation[:200] + '...'
             
+            # Handle None score safely
+            score_display = f"{eval['overall_score']:.0f}" if eval.get('overall_score') is not None else "Error"
+            
             issue_rows.append([
                 str(eval['segment_id']),
-                f"{eval.get('overall_score', 0):.0f}",
+                score_display,  # Changed this line
                 Paragraph(issues_text, small_style),
                 Paragraph(explanation, small_style)
             ])
@@ -313,7 +317,7 @@ def create_file_section(result, idx, chart_dir, small_style, styles, heading_sty
     elements.append(Spacer(1, 12))
     
     # Sample excellent segments
-    excellent = [e for e in evaluations if e.get('overall_score', 0) >= 95]
+    excellent = [e for e in evaluations if e.get('overall_score') is not None and e['overall_score'] >= 95]
     if excellent:
         elements.append(Paragraph(f"Excellent Quality Samples ({len(excellent)} segments)", heading_style))
         
