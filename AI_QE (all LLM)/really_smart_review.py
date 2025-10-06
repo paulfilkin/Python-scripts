@@ -67,18 +67,30 @@ def process_folder(folder_path, config):
     
     # Initialize LLM provider
     try:
-        provider = OpenAIProvider(
+        from core.async_llm_provider import AsyncOpenAIProvider
+        from core.api_cache import APICredentialCache
+        
+        provider = AsyncOpenAIProvider(
             api_key=config['llm_provider']['api_key'],
             model=config['llm_provider']['model'],
-            temperature=config['llm_provider'].get('temperature', 0.3)
+            max_concurrent=50
         )
         
-        # Test connection
-        print("Testing OpenAI API connection...")
-        if not provider.validate_credentials():
-            print("Error: Failed to connect to OpenAI API. Check your API key.")
-            return
-        print("✓ API connection successful")
+        # Smart credential validation with caching
+        cache = APICredentialCache()
+        
+        if cache.is_validated(config['llm_provider']['api_key'], config['llm_provider']['model']):
+            print("✓ Using cached API credentials (validated within last 7 days)")
+        else:
+            print("Testing OpenAI API connection...")
+            import asyncio
+            if not asyncio.run(provider.validate_credentials()):
+                print("Error: Failed to connect to OpenAI API. Check your API key.")
+                cache.invalidate(config['llm_provider']['api_key'])
+                return
+            print("✓ API connection successful")
+            cache.mark_validated(config['llm_provider']['api_key'], config['llm_provider']['model'])
+        
         print()
         
     except Exception as e:
@@ -102,12 +114,14 @@ def process_folder(folder_path, config):
             if result:
                 all_results.append(result)
                 
-                # Save annotated XLIFF
+                # Save annotated XLIFF with pre-parsed tree
                 output_xliff = output_path / xliff_file.name
                 XLIFFHandler.save_annotated_xliff(
                     xliff_file, 
                     output_xliff, 
-                    result['evaluations']
+                    result['evaluations'],
+                    parsed_tree=result.get('parsed_tree'),  # ADD THIS
+                    parsed_root=result.get('parsed_root')   # ADD THIS
                 )
                 print(f"✓ Saved annotated XLIFF: {output_xliff.name}")
             
@@ -129,8 +143,17 @@ def process_folder(folder_path, config):
         
         # Save analysis data as JSON for further processing
         json_path = output_path / 'analysis_data.json'
+        
+        # Remove non-serializable tree objects before saving
+        json_results = []
+        for result in all_results:
+            # Create a copy without the tree objects
+            json_result = {k: v for k, v in result.items() 
+                          if k not in ['parsed_tree', 'parsed_root']}
+            json_results.append(json_result)
+        
         with open(json_path, 'w', encoding='utf-8') as f:
-            json.dump(all_results, f, indent=2, ensure_ascii=False)
+            json.dump(json_results, f, indent=2, ensure_ascii=False)
         print(f"✓ Saved analysis data: {json_path.name}")
         
         print()
