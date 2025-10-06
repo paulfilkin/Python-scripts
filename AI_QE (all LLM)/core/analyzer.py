@@ -1,26 +1,27 @@
 """
-Smart Review Analysis Engine.
-Orchestrates the evaluation of XLIFF segments using LLM with context awareness.
+Smart Review Analysis Engine - Async Version.
+Orchestrates concurrent evaluation of XLIFF segments using async LLM provider.
 """
 
+import asyncio
 from pathlib import Path
 from typing import Dict, Any, List
 import statistics
 
 from core.xliff_handler import XLIFFHandler
-from core.llm_provider import LLMProvider
+from core.async_llm_provider import AsyncOpenAIProvider
 from prompts.templates import PromptTemplateManager
 
 
 class SmartReviewAnalyzer:
-    """Main analysis engine coordinating segment evaluation."""
+    """Main analysis engine coordinating segment evaluation with concurrency."""
     
-    def __init__(self, provider: LLMProvider, config: Dict[str, Any]):
+    def __init__(self, provider: AsyncOpenAIProvider, config: Dict[str, Any]):
         """
         Initialize analyzer.
         
         Args:
-            provider: LLM provider instance
+            provider: Async LLM provider instance
             config: Configuration dictionary
         """
         self.provider = provider
@@ -29,11 +30,16 @@ class SmartReviewAnalyzer:
     
     def analyze_file(self, xliff_path: Path) -> Dict[str, Any]:
         """
-        Analyze entire XLIFF file.
+        Analyze entire XLIFF file (sync wrapper for async implementation).
         
         Returns:
             Dictionary containing evaluations, statistics, and metadata
         """
+        # Run async analysis in event loop
+        return asyncio.run(self._analyze_file_async(xliff_path))
+    
+    async def _analyze_file_async(self, xliff_path: Path) -> Dict[str, Any]:
+        """Async implementation of file analysis."""
         print(f"  Parsing XLIFF file...")
         
         # Parse XLIFF
@@ -54,70 +60,45 @@ class SmartReviewAnalyzer:
             self.config['content_type']
         )
         
-        # Analyze each segment with context
-        evaluations = []
+        # Prepare all segments with their context
         context_window = self.config['context_window']
         
-        print(f"  Analyzing segments (context window: ±{context_window})...")
+        print(f"  Analyzing {len(segments)} segments concurrently (context window: ±{context_window})...")
+        print(f"  Max concurrent requests: {self.provider.max_concurrent}")
         
+        segments_with_context = []
         for idx, segment in enumerate(segments):
-            # Show progress
-            progress = f"  [{idx+1}/{len(segments)}]"
-            print(f"{progress} Segment {segment['id']}", end='\r')
-            
-            # Get context window
             context_before = self._get_context(segments, idx, -context_window, 0)
             context_after = self._get_context(segments, idx, 1, context_window + 1)
             
-            # Evaluate segment
-            try:
-                evaluation = self.provider.evaluate_segment(
-                    source=segment['source'],
-                    target=segment['target'],
-                    context_before=context_before,
-                    context_after=context_after,
-                    prompt_template=prompt_template,
-                    config=self.config
-                )
-                
-                # Add metadata
-                evaluation['segment_id'] = segment['id']
-                evaluation['segment_index'] = idx
-                evaluation['source'] = segment['source']
-                evaluation['target'] = segment['target']
-                
-                # Add context note if context was used
-                if context_before or context_after:
-                    start_id = context_before[0]['id'] if context_before else segment['id']
-                    end_id = context_after[-1]['id'] if context_after else segment['id']
-                    evaluation['context_note'] = f"cross-segment (analyzed {start_id}-{end_id})"
-                else:
-                    evaluation['context_note'] = "segment-only"
-                
-                # Determine if comment should be added
-                should_comment = self._should_add_comment(evaluation)
-                
-                if should_comment:
-                    # Generate comment text
-                    comment = XLIFFHandler.create_comment(evaluation, self.config)
-                    evaluation['comment'] = comment
-                    
-                    # Map severity
-                    evaluation['trados_severity'] = self._map_severity(evaluation)
-                
-                evaluations.append(evaluation)
-                
-            except Exception as e:
-                print(f"\n  Error evaluating segment {segment['id']}: {e}")
-                # Add error evaluation
-                evaluations.append({
-                    'segment_id': segment['id'],
-                    'segment_index': idx,
-                    'error': str(e),
-                    'overall_score': None
-                })
+            segments_with_context.append({
+                'source': segment['source'],
+                'target': segment['target'],
+                'segment_id': segment['id'],
+                'segment_index': idx,
+                'context_before': context_before,
+                'context_after': context_after
+            })
         
-        print(f"\n  ✓ Analysis complete")
+        # Process all segments concurrently with progress updates
+        evaluations = await self._evaluate_with_progress(
+            segments_with_context,
+            prompt_template
+        )
+        
+        # Add comments where needed
+        for evaluation in evaluations:
+            should_comment = self._should_add_comment(evaluation)
+            
+            if should_comment:
+                # Generate comment text
+                comment = XLIFFHandler.create_comment(evaluation, self.config)
+                evaluation['comment'] = comment
+                
+                # Map severity
+                evaluation['trados_severity'] = self._map_severity(evaluation)
+        
+        print(f"  ✓ Analysis complete")
         
         # Calculate statistics
         stats = self._calculate_statistics(evaluations)
@@ -128,8 +109,37 @@ class SmartReviewAnalyzer:
             'metadata': metadata,
             'evaluations': evaluations,
             'statistics': stats,
-            'config_used': self.config
+            'config_used': self.config,
+            'parsed_tree': data['tree'],
+            'parsed_root': data['root']
         }
+    
+    async def _evaluate_with_progress(self, segments_with_context: List[Dict],
+                                     prompt_template: str) -> List[Dict[str, Any]]:
+        """Evaluate segments with progress reporting."""
+        total = len(segments_with_context)
+        batch_size = 100  # Process in batches for progress updates
+        
+        all_evaluations = []
+        
+        for batch_start in range(0, total, batch_size):
+            batch_end = min(batch_start + batch_size, total)
+            batch = segments_with_context[batch_start:batch_end]
+            
+            print(f"  Processing batch {batch_start+1}-{batch_end}/{total}...", end='\r')
+            
+            # Evaluate batch concurrently
+            batch_results = await self.provider.evaluate_segments_batch(
+                batch,
+                prompt_template,
+                self.config
+            )
+            
+            all_evaluations.extend(batch_results)
+        
+        print(f"  Processed all {total} segments                    ")
+        
+        return all_evaluations
     
     def _get_context(self, segments: List[Dict], current_idx: int, 
                     start_offset: int, end_offset: int) -> List[Dict]:
