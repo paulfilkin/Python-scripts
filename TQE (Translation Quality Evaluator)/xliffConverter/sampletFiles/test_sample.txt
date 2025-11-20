@@ -1,0 +1,19 @@
+My first sentence is this.
+Meine erste Satz lautet so.
+Ma première phrase est celle-ci.
+
+My second sentence looks like this.
+Mein zweiter Satz sieht so aus.
+Ma deuxième phrase ressemble à ceci.
+
+My third sentence would be this.
+Mein dritter Satz wäre dieser.
+Ma troisième phrase serait celle-ci.
+
+Surprisingly, my fourth sentence is this.
+Überraschenderweise ist dies mein vierter Satz.
+Fait surprenant, voici ma quatrième phrase.
+
+Unsurprisingly, this is my fifth and last sentence.
+Wenig überraschend ist dies mein fünfter und letzter Satz.
+Sans surprise, voici ma cinquième et dernière phrase.

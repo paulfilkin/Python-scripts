@@ -1,0 +1,10 @@
+# XLIFF 2.0 Converter - Dependencies
+
+# Web UI
+streamlit>=1.28.0
+
+# XML processing (XLIFF generation and parsing)
+lxml>=4.9.0
+
+# Installation:
+# pip install -r requirements.txt
