@@ -1,0 +1,20 @@
+# XLIFF 2.0 Quality Evaluation System - Dependencies
+
+# Core LLM Integration
+openai>=1.12.0
+
+# XML Processing (CRITICAL - must use lxml for namespace preservation)
+lxml>=4.9.0
+
+# PDF Report Generation
+reportlab>=4.0.9
+
+# Data Visualisation
+matplotlib>=3.8.2
+numpy>=1.26.3
+
+# Streamlit UI
+streamlit>=1.31.0
+
+# Environment Management
+python-dotenv>=1.0.0

@@ -1,0 +1,61 @@
+<?xml version='1.0' encoding='utf-8'?>
+<xliff xmlns="urn:oasis:names:tc:xliff:document:2.0" xmlns:mda="urn:oasis:names:tc:xliff:metadata:2.0" version="2.0" srcLang="en-GB" trgLang="ro-RO">
+  <file id="d4a98146-613c-414e-9780-be663577693f" original="test_sample.txt">
+    <skeleton>Original file: test_sample.txt</skeleton>
+    <unit id="1">
+      <mda:metadata>
+        <mda:metaGroup category="reference-translations">
+          <mda:meta type="ref-de-DE">Meine erste Satz lautet so.</mda:meta>
+          <mda:meta type="ref-fr-FR">Ma première phrase est celle-ci.</mda:meta>
+        </mda:metaGroup>
+      </mda:metadata>
+      <segment id="1">
+        <source>My first sentence is this.</source>
+      </segment>
+    </unit>
+    <unit id="2">
+      <mda:metadata>
+        <mda:metaGroup category="reference-translations">
+          <mda:meta type="ref-de-DE">Mein zweiter Satz sieht so aus.</mda:meta>
+          <mda:meta type="ref-fr-FR">Ma deuxième phrase ressemble à ceci.</mda:meta>
+        </mda:metaGroup>
+      </mda:metadata>
+      <segment id="2">
+        <source>My second sentence looks like this.</source>
+      </segment>
+    </unit>
+    <unit id="3">
+      <mda:metadata>
+        <mda:metaGroup category="reference-translations">
+          <mda:meta type="ref-de-DE">Mein dritter Satz wäre dieser.</mda:meta>
+          <mda:meta type="ref-fr-FR">Ma troisième phrase serait celle-ci.</mda:meta>
+        </mda:metaGroup>
+      </mda:metadata>
+      <segment id="3">
+        <source>My third sentence would be this.</source>
+      </segment>
+    </unit>
+    <unit id="4">
+      <mda:metadata>
+        <mda:metaGroup category="reference-translations">
+          <mda:meta type="ref-de-DE">Überraschenderweise ist dies mein vierter Satz.</mda:meta>
+          <mda:meta type="ref-fr-FR">Fait surprenant, voici ma quatrième phrase.</mda:meta>
+        </mda:metaGroup>
+      </mda:metadata>
+      <segment id="4">
+        <source>Surprisingly, my fourth sentence is this.</source>
+      </segment>
+    </unit>
+    <unit id="5">
+      <mda:metadata>
+        <mda:metaGroup category="reference-translations">
+          <mda:meta type="ref-de-DE">Wenig überraschend ist dies mein fünfter und letzter Satz.</mda:meta>
+          <mda:meta type="ref-fr-FR">Sans surprise, voici ma cinquième et dernière phrase.</mda:meta>
+        </mda:metaGroup>
+      </mda:metadata>
+      <segment id="5">
+        <source>Unsurprisingly, this is my fifth and last sentence.</source>
+      </segment>
+    </unit>
+  </file>
+</xliff>
