@@ -117,6 +117,7 @@ class AsyncOpenAIProvider:
             task = self._evaluate_single_segment(
                 item['source'],
                 item['target'],
+                item.get('references', {}),  # Pass reference translations
                 item['context_before'],
                 item['context_after'],
                 item['segment_id'],
@@ -212,6 +213,7 @@ Provide only the translation, no explanation."""
     async def _evaluate_single_segment(self,
                                       source: str,
                                       target: str,
+                                      references: Dict[str, str],
                                       context_before: List[Dict],
                                       context_after: List[Dict],
                                       segment_id: str,
@@ -223,6 +225,7 @@ Provide only the translation, no explanation."""
             # Build the prompt
             prompt = self._build_prompt(
                 source, target,
+                references,
                 context_before, context_after,
                 prompt_template, config
             )
@@ -356,15 +359,24 @@ Provide only the translation, no explanation."""
         return api_params
     
     def _build_prompt(self, source: str, target: str,
+                     references: Dict[str, str],
                      context_before: List[Dict], context_after: List[Dict],
                      template: str, config: dict) -> str:
-        """Build the evaluation prompt with optimised context."""
+        """Build the evaluation prompt with reference translations and optimised context."""
         
         # Get optimisation settings from config
         opt = config.get('context_optimization', {})
         MAX_CONTEXT_CHARS = opt.get('max_chars_per_segment', 200)
         MAX_NEIGHBORS = opt.get('max_neighbors_per_side', 4)
         MIN_LENGTH = opt.get('min_segment_length', 3)
+        
+        # Format reference translations - MOST IMPORTANT CONTEXT
+        reference_text = ""
+        if references:
+            ref_parts = []
+            for lang, text in references.items():
+                ref_parts.append(f"- {lang}: {text}")
+            reference_text = "Approved reference translations:\n" + "\n".join(ref_parts)
         
         # Format context - SOURCE ONLY, truncated
         context_before_text = ""
@@ -415,6 +427,7 @@ Provide only the translation, no explanation."""
         prompt = template.format(
             source_lang=config['language_pair']['source'],
             target_lang=config['language_pair']['target'],
+            reference_translations=reference_text or "None",
             context_before=context_before_text or "None",
             source_text=source,
             target_text=target,
