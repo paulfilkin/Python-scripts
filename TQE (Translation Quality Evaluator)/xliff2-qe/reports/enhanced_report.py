@@ -30,36 +30,52 @@ import numpy as np
 def find_and_register_unicode_font():
     """
     Try to find and register a Unicode-capable font on the system.
+    Prioritizes CJK-capable fonts for Asian language support.
     Returns (font_name, font_bold) tuple.
     """
     font_candidates = []
     
-    if sys.platform.startswith('win'):
-        font_candidates.extend([
-            ('C:\\Windows\\Fonts\\arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf', 'Arial'),
-            ('C:\\Windows\\Fonts\\calibri.ttf', 'C:\\Windows\\Fonts\\calibrib.ttf', 'Calibri'),
-        ])
-    elif sys.platform == 'darwin':
-        font_candidates.extend([
-            ('/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Supplemental/Arial Bold.ttf', 'Arial'),
-            ('/System/Library/Fonts/Helvetica.ttc', '/System/Library/Fonts/Helvetica.ttc', 'Helvetica'),
-        ])
-    else:
-        linux_paths = [
+    # Linux - prioritize CJK fonts first
+    if sys.platform.startswith('linux'):
+        cjk_fonts = [
+            # Noto Sans CJK (best CJK support)
+            ('/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/truetype/noto/NotoSansCJK-Bold.ttc', 'NotoSansCJK'),
+            ('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', '/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc', 'NotoSansCJK'),
+            # WQY (Chinese)
+            ('/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', '/usr/share/fonts/truetype/wqy/wqy-microhei.ttc', 'WQY'),
+            # Standard fallbacks
             ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf', 'DejaVu'),
             ('/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf', 'Liberation'),
             ('/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf', '/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf', 'Liberation2'),
         ]
-        font_candidates.extend(linux_paths)
+        font_candidates.extend(cjk_fonts)
+    
+    # Windows
+    if sys.platform.startswith('win'):
+        font_candidates.extend([
+            ('C:\\Windows\\Fonts\\msgothic.ttc', 'C:\\Windows\\Fonts\\msgothic.ttc', 'MSGothic'),  # Japanese
+            ('C:\\Windows\\Fonts\\msyh.ttc', 'C:\\Windows\\Fonts\\msyhbd.ttc', 'MSYaHei'),  # Chinese
+            ('C:\\Windows\\Fonts\\arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf', 'Arial'),
+            ('C:\\Windows\\Fonts\\calibri.ttf', 'C:\\Windows\\Fonts\\calibrib.ttf', 'Calibri'),
+        ])
+    
+    # macOS
+    elif sys.platform == 'darwin':
+        font_candidates.extend([
+            ('/System/Library/Fonts/PingFang.ttc', '/System/Library/Fonts/PingFang.ttc', 'PingFang'),  # Chinese
+            ('/System/Library/Fonts/Hiragino Sans GB.ttc', '/System/Library/Fonts/Hiragino Sans GB.ttc', 'HiraginoSans'),
+            ('/System/Library/Fonts/Supplemental/Arial.ttf', '/System/Library/Fonts/Supplemental/Arial Bold.ttf', 'Arial'),
+            ('/System/Library/Fonts/Helvetica.ttc', '/System/Library/Fonts/Helvetica.ttc', 'Helvetica'),
+        ])
     
     for regular_path, bold_path, font_family in font_candidates:
         try:
             if os.path.exists(regular_path) and os.path.exists(bold_path):
                 pdfmetrics.registerFont(TTFont('UniFont', regular_path))
                 pdfmetrics.registerFont(TTFont('UniFontBold', bold_path))
-                print(f"✓ Using {font_family} fonts for full Unicode support")
+                print(f"✓ Using {font_family} fonts for CJK/Unicode support")
                 return ('UniFont', 'UniFontBold')
-        except Exception:
+        except Exception as e:
             continue
     
     print("⚠ WARNING: No Unicode-capable fonts found - special characters may display incorrectly")

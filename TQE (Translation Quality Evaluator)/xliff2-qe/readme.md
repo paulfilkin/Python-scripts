@@ -11,7 +11,9 @@ An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with supp
 - **Batch Processing**: Upload and process multiple XLIFF files simultaneously
 - **Advanced Evaluation**: 4-dimensional scoring (Accuracy, Fluency, Style, Context Coherence)
 - **Professional Reports**: Detailed PDF reports with charts, issue analysis, and actionable recommendations
-- **Async Processing**: High-performance concurrent API calls (50+ simultaneous requests)
+- **CJK Support**: Full Chinese, Japanese, and Korean character support in PDF reports
+- **Async Processing**: High-performance concurrent API calls with configurable rate limiting
+- **Reliability Features**: Response validation, automatic retries, and clear failure markers
 - **Context-Aware**: Evaluates translations within surrounding segment context
 - **Multiple Content Types**: Specialised evaluation templates for general, technical, marketing, legal, and UI content
 
@@ -29,7 +31,7 @@ An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with supp
 pip install -r requirements.txt
 ```
 
-2. Create a `.env` file in the project root (if you don't the application will request one):
+1. Create a `.env` file in the project root (if you don't the application will request one):
 
 ```bash
 OPENAI_API_KEY=your_api_key_here
@@ -107,9 +109,19 @@ Performs comprehensive quality evaluation of existing target translations using 
 
 **Sidebar Options:**
 
-- **Model**: Choose between gpt-5-mini (fastest) or gpt-4o
+- **Clear All & Start Fresh**: Reset button to clear all session state and start clean
+- **Model**: Choose between gpt-5-mini (fastest), gpt-5, or gpt-4o
 - **Content Type**: Select evaluation template (general, technical, marketing, legal, UI)
 - **Context Window**: Number of surrounding segments to consider (0-10)
+- **API Rate Limiting**:
+  - **Requests per second** (1-50): Control API call rate to prevent rate limiting
+  - **Max concurrent requests** (5-50): Limit simultaneous API calls for reliability
+
+**Rate Limiting Recommendations:**
+
+- **Maximum Reliability** (slower): 5-10 req/sec, 10-15 concurrent
+- **Balanced** (recommended): 10-15 req/sec, 20-25 concurrent
+- **Maximum Speed** (less reliable): 20-30 req/sec, 30-40 concurrent
 
 ### Output Files
 
@@ -149,12 +161,24 @@ Evaluation reports include:
   - Segments requiring attention (lowest scores with explanations)
   - Excellent quality samples (highest scores with source/target text)
 
+**Unicode & CJK Support**: Reports automatically detect and use appropriate fonts for Chinese, Japanese, Korean, and other non-Latin scripts. Supported fonts include Noto Sans CJK, WQY MicroHei, MS Gothic/YaHei, and PingFang.
+
 ## Performance
 
-- **Concurrent Processing**: 50 simultaneous API requests by default
-- **Rate Limiting**: Automatic retry with exponential backoff
-- **Error Handling**: Individual segment failures don't stop batch processing
+- **Concurrent Processing**: Configurable concurrent API requests (default: 25)
+- **Rate Limiting**: User-configurable requests per second (default: 10/sec)
+- **Response Validation**: Validates all API responses before acceptance
+- **Automatic Retry**: Exponential backoff with up to 5 retry attempts
+- **Error Handling**: Individual segment failures marked with `[Translation failed]`
 - **Token Optimisation**: Adaptive token limits based on segment complexity
+- **Expected Success Rate**: 95-98% with default settings
+
+### Reliability Features
+
+- **Response Validation**: Checks for empty/null responses before processing
+- **Clear Failure Markers**: Failed segments marked as `[Translation failed]` for easy identification
+- **Event Loop Safety**: Automatic detection and handling of Streamlit event loop changes
+- **Graceful Degradation**: Processing continues even if individual segments fail
 
 ## Data Privacy and Licensing
 
@@ -192,6 +216,34 @@ It does **not** apply to:
 - the Streamlit software,
 - its dependencies,
 - or any third-party APIs or services used with this project, all of which remain subject to their own licences and terms.
+
+## Troubleshooting
+
+### Translation Failures
+
+If you see `[Translation failed]` in output files:
+
+1. **Reduce rate limiting**: Lower "Requests per second" to 5-10
+2. **Reduce concurrency**: Lower "Max concurrent requests" to 10-15
+3. **Check connection**: Ensure stable internet connection
+4. **Verify API key**: Confirm OpenAI API key is valid and has credits
+5. **Manual fix**: Search for `[Translation failed]` and translate those segments manually
+
+### PDF Display Issues
+
+If Chinese/Japanese/Korean characters appear as boxes (☐):
+
+1. **Linux**: Install fonts: `sudo apt-get install fonts-noto-cjk`
+2. **Windows**: System should have MS Gothic/YaHei by default
+3. **macOS**: System should have PingFang/Hiragino by default
+
+### Session State Issues
+
+If settings seem stuck or not updating:
+
+1. Click **"Clear All & Start Fresh"** button in sidebar
+2. Or refresh the browser page
+3. Re-upload files and adjust settings
 
 ## Contributing
 

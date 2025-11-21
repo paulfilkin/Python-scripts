@@ -49,6 +49,15 @@ st.markdown("---")
 with st.sidebar:
     st.header("Configuration")
     
+    # Reset button at top
+    if st.button("🔄 Clear All & Start Fresh", use_container_width=True):
+        # Clear all session state
+        for key in list(st.session_state.keys()):
+            del st.session_state[key]
+        st.rerun()
+    
+    st.markdown("---")
+    
     # API Key - only show if not in env
     env_api_key = os.getenv('OPENAI_API_KEY', '')
     if env_api_key:
@@ -82,6 +91,27 @@ with st.sidebar:
         max_value=10,
         value=0,
         help="Number of surrounding segments for context (0 for software strings, higher for flowing text)"
+    )
+    
+    st.markdown("---")
+    st.subheader("API Rate Limiting")
+    
+    requests_per_second = st.slider(
+        "Requests per second",
+        min_value=1.0,
+        max_value=50.0,
+        value=10.0,
+        step=1.0,
+        help="Limit API calls to prevent rate limiting (lower = more reliable)"
+    )
+    
+    max_concurrent = st.slider(
+        "Max concurrent requests",
+        min_value=5,
+        max_value=50,
+        value=25,
+        step=5,
+        help="Maximum simultaneous API calls (lower = more reliable)"
     )
 
 # Main area - File upload
@@ -167,7 +197,12 @@ if uploaded_files:
                     
                     # Initialize provider once
                     if provider is None:
-                        provider = AsyncOpenAIProvider(api_key=api_key, model=model, max_concurrent=50)
+                        provider = AsyncOpenAIProvider(
+                            api_key=api_key, 
+                            model=model, 
+                            max_concurrent=max_concurrent,
+                            requests_per_second=requests_per_second
+                        )
                         config = get_default_config()
                         config['context_window_size'] = context_window
                     

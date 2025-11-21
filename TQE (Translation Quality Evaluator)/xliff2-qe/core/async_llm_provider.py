@@ -13,7 +13,8 @@ from openai import AsyncOpenAI, RateLimitError, APIError
 class AsyncOpenAIProvider:
     """Async OpenAI API provider with controlled concurrency."""
     
-    def __init__(self, api_key: str, model: str = "gpt-5-mini", max_concurrent: int = 50):
+    def __init__(self, api_key: str, model: str = "gpt-5-mini", max_concurrent: int = 50, 
+                 requests_per_second: float = 10.0, batch_delay: float = 0.5):
         """
         Initialize async OpenAI provider.
         
@@ -21,14 +22,49 @@ class AsyncOpenAIProvider:
             api_key: OpenAI API key
             model: Model to use (gpt-5-mini, gpt-5, gpt-4o, etc.)
             max_concurrent: Maximum concurrent requests (default: 50)
+            requests_per_second: Rate limit for API calls (default: 10/sec)
+            batch_delay: Delay between processing batches in seconds (default: 0.5)
         """
         self.api_key = api_key
         self.model = model
         self.max_concurrent = max_concurrent
-        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.requests_per_second = requests_per_second
+        self.batch_delay = batch_delay
+        
+        # Rate limiting - don't create lock here, create it lazily
+        self.min_request_interval = 1.0 / requests_per_second if requests_per_second > 0 else 0
+        self.last_request_time = 0
+        self._rate_limit_lock = None  # Create lazily in event loop
+        self._semaphore = None  # Create lazily in event loop
+        self._current_loop_id = None  # Track which event loop owns our locks
         
         # Initialize async client
         self.client = AsyncOpenAI(api_key=api_key)
+    
+    def _reset_for_new_loop(self):
+        """Reset locks when we detect a new event loop."""
+        try:
+            current_loop = id(asyncio.get_event_loop())
+            if self._current_loop_id != current_loop:
+                self._rate_limit_lock = None
+                self._semaphore = None
+                self._current_loop_id = current_loop
+        except:
+            pass
+    
+    def _get_or_create_lock(self):
+        """Get or create rate limit lock in current event loop."""
+        self._reset_for_new_loop()
+        if self._rate_limit_lock is None:
+            self._rate_limit_lock = asyncio.Lock()
+        return self._rate_limit_lock
+    
+    def _get_or_create_semaphore(self):
+        """Get or create semaphore in current event loop."""
+        self._reset_for_new_loop()
+        if self._semaphore is None:
+            self._semaphore = asyncio.Semaphore(self.max_concurrent)
+        return self._semaphore
     
     async def validate_credentials(self) -> bool:
         """Test API connection with a minimal request."""
@@ -50,6 +86,55 @@ class AsyncOpenAIProvider:
             else:
                 print(f"API validation failed: {e}")
             return False
+    
+    async def _rate_limit(self):
+        """Enforce rate limiting between requests."""
+        if self.min_request_interval <= 0:
+            return
+        
+        lock = self._get_or_create_lock()
+        async with lock:
+            current_time = asyncio.get_event_loop().time()
+            time_since_last = current_time - self.last_request_time
+            
+            if time_since_last < self.min_request_interval:
+                await asyncio.sleep(self.min_request_interval - time_since_last)
+            
+            self.last_request_time = asyncio.get_event_loop().time()
+    
+    def _validate_response(self, response_text: str, expected_type: str = "translation") -> bool:
+        """
+        Validate API response has actual content.
+        
+        Args:
+            response_text: The response text from API
+            expected_type: Type of response ("translation" or "evaluation")
+        
+        Returns:
+            True if response is valid, False otherwise
+        """
+        if not response_text or not response_text.strip():
+            return False
+        
+        # Check for error indicators
+        error_indicators = ['[Translation failed', '[ERROR]', 'API error', 'Max retries']
+        if any(indicator in response_text for indicator in error_indicators):
+            return False
+        
+        # For evaluations, verify JSON structure
+        if expected_type == "evaluation":
+            try:
+                if "```json" in response_text or "```" in response_text or "{" in response_text:
+                    return True
+                return False
+            except:
+                return False
+        
+        # For translations, check minimum length
+        if expected_type == "translation":
+            return len(response_text.strip()) >= 1
+        
+        return True
     
     async def translate_segments_batch(self,
                                       segments: List[Dict[str, Any]],
@@ -159,8 +244,12 @@ class AsyncOpenAIProvider:
                                        source_lang: str,
                                        target_lang: str,
                                        references: Dict[str, str]) -> Dict[str, Any]:
-        """Translate a single segment with semaphore control."""
-        async with self.semaphore:
+        """Translate a single segment with semaphore control and validation."""
+        semaphore = self._get_or_create_semaphore()
+        async with semaphore:
+            # Apply rate limiting
+            await self._rate_limit()
+            
             # Build the translation prompt
             if references:
                 # With context
@@ -188,27 +277,84 @@ Provide only the translation, no explanation."""
                 {"role": "user", "content": prompt}
             ]
             
-            # Call API with retry logic
-            try:
-                api_params = {
-                    'model': self.model,
-                    'messages': messages,
-                    self._get_token_param_name(): 500
-                }
+            # Call API with retry logic and validation
+            max_retries = 5  # Increased from 3
+            for attempt in range(max_retries):
+                try:
+                    api_params = {
+                        'model': self.model,
+                        'messages': messages,
+                        self._get_token_param_name(): 500
+                    }
+                    
+                    response = await self.client.chat.completions.create(**api_params)
+                    translation = response.choices[0].message.content
+                    
+                    # Check if we got actual content
+                    if not translation:
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0 * (attempt + 1))
+                            continue
+                        else:
+                            return {
+                                'segment_id': segment_id,
+                                'translation': '[Translation failed]',
+                                'error': 'Empty response from API after retries'
+                            }
+                    
+                    translation = translation.strip()
+                    
+                    # Validate response
+                    if not self._validate_response(translation, "translation"):
+                        if attempt < max_retries - 1:
+                            await asyncio.sleep(1.0 * (attempt + 1))
+                            continue
+                        else:
+                            return {
+                                'segment_id': segment_id,
+                                'translation': '[Translation failed]',
+                                'error': 'Invalid response format after retries'
+                            }
+                    
+                    # Success
+                    return {
+                        'segment_id': segment_id,
+                        'translation': translation
+                    }
                 
-                response = await self.client.chat.completions.create(**api_params)
-                translation = response.choices[0].message.content.strip()
+                except RateLimitError as e:
+                    if attempt < max_retries - 1:
+                        delay = (2 ** attempt) + random.uniform(0, 1)
+                        await asyncio.sleep(delay)
+                        continue
+                    return {
+                        'segment_id': segment_id,
+                        'translation': '[Translation failed]',
+                        'error': f'Rate limit exceeded: {str(e)}'
+                    }
                 
-                return {
-                    'segment_id': segment_id,
-                    'translation': translation
-                }
-            except Exception as e:
-                return {
-                    'segment_id': segment_id,
-                    'translation': f"[Translation failed: {str(e)}]",
-                    'error': str(e)
-                }
+                except APIError as e:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(2.0 * (attempt + 1))
+                        continue
+                    return {
+                        'segment_id': segment_id,
+                        'translation': '[Translation failed]',
+                        'error': f'API error: {str(e)}'
+                    }
+                
+                except Exception as e:
+                    return {
+                        'segment_id': segment_id,
+                        'translation': '[Translation failed]',
+                        'error': f'Translation failed: {str(e)}'
+                    }
+            
+            return {
+                'segment_id': segment_id,
+                'translation': '[Translation failed]',
+                'error': 'Max retries exceeded'
+            }
     
     async def _evaluate_single_segment(self,
                                       source: str,
@@ -221,7 +367,8 @@ Provide only the translation, no explanation."""
                                       prompt_template: str,
                                       config: dict) -> Dict[str, Any]:
         """Evaluate a single segment with semaphore control."""
-        async with self.semaphore:
+        semaphore = self._get_or_create_semaphore()
+        async with semaphore:
             # Build the prompt
             prompt = self._build_prompt(
                 source, target,
@@ -260,25 +407,47 @@ Provide only the translation, no explanation."""
     
     async def _call_api_with_retry(self, messages: List[Dict], config: dict,
                                    max_retries: int = 5) -> Dict[str, Any]:
-        """Call API with exponential backoff and jitter."""
+        """Call API with exponential backoff, jitter, rate limiting, and response validation."""
         base_delay = 1.0
         
         for attempt in range(max_retries):
             try:
+                # Apply rate limiting
+                await self._rate_limit()
+                
                 # Extract source length from messages for adaptive token limits
                 source_length = len(messages[-1]['content']) if messages else 0
                 api_params = self._build_api_params(messages, config, source_length)
                 response = await self.client.chat.completions.create(**api_params)
                 
-                # Parse response
+                # Get response text
                 result_text = response.choices[0].message.content
+                
+                # Validate response before parsing
+                if not self._validate_response(result_text, "evaluation"):
+                    if attempt < max_retries - 1:
+                        # Retry with backoff
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+                    else:
+                        return self._error_evaluation("Empty or invalid response from API")
+                
+                # Parse response
                 evaluation = self._parse_response(result_text)
+                
+                # Validate parsed evaluation has required fields
+                if evaluation.get('overall_score') is None and 'error' not in evaluation:
+                    if attempt < max_retries - 1:
+                        await asyncio.sleep(0.5 * (attempt + 1))
+                        continue
+                    else:
+                        return self._error_evaluation("Parsed evaluation missing required fields")
                 
                 return evaluation
                 
             except RateLimitError as e:
                 if attempt == max_retries - 1:
-                    raise
+                    return self._error_evaluation(f"Rate limit exceeded after {max_retries} attempts")
                 
                 # Extract retry_after if available
                 retry_after = getattr(e, 'retry_after', None)
