@@ -80,8 +80,8 @@ with st.sidebar:
         "Context Window",
         min_value=0,
         max_value=10,
-        value=5,
-        help="Number of segments before/after for context"
+        value=0,
+        help="Number of surrounding segments for context (0 for software strings, higher for flowing text)"
     )
 
 # Main area - File upload
@@ -243,6 +243,7 @@ if uploaded_files:
                                 'segment_index': i,
                                 'source': segment['source'],
                                 'target': segment['target'],
+                                'references': segment.get('references', {}),  # Add reference translations
                                 'context_before': context_before,
                                 'context_after': context_after
                             })
