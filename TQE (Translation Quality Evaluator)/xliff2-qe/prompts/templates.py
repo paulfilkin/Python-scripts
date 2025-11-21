@@ -24,6 +24,8 @@ class PromptTemplateManager:
         """General purpose evaluation template."""
         return """You are reviewing a translation from {source_lang} to {target_lang}.
 
+{reference_translations}
+
 {context_before}
 
 Current segment to evaluate:
@@ -38,6 +40,7 @@ Evaluate the target translation across these dimensions:
    - Semantic fidelity to source
    - No omissions or unwarranted additions
    - Meaning preservation
+   - Use reference translations to verify correct interpretation
 
 2. FLUENCY (Weight: {fluency_weight}%)
    - Native-speaker naturalness
@@ -46,7 +49,7 @@ Evaluate the target translation across these dimensions:
 
 3. STYLE (Weight: {style_weight}%)
    - Appropriate register and tone
-   - Consistent terminology
+   - Consistent terminology (compare with references)
    - Cultural appropriateness
 
 4. CONTEXT COHERENCE (Weight: {context_weight}%)
@@ -74,11 +77,13 @@ Provide your evaluation in the following JSON format:
   "explanation": "Overall assessment and key points"
 }}
 
-Be strict but fair. Consider context when evaluating consistency. Distinguish between minor stylistic preferences and actual errors."""
+Be strict but fair. Use reference translations to understand intended meaning and verify terminology. Consider context when evaluating consistency."""
     
     def _technical_template(self) -> str:
         """Technical documentation template."""
         return """You are reviewing technical documentation translated from {source_lang} to {target_lang}.
+
+{reference_translations}
 
 {context_before}
 
@@ -93,7 +98,7 @@ Evaluate the target translation for technical content:
 1. ACCURACY (Weight: {accuracy_weight}%)
    - Technical correctness
    - No omissions of critical information
-   - Precise terminology
+   - Precise terminology (verify against references)
    - Meaning preservation
 
 2. FLUENCY (Weight: {fluency_weight}%)
@@ -104,7 +109,7 @@ Evaluate the target translation for technical content:
 3. STYLE (Weight: {style_weight}%)
    - Consistent with technical writing conventions
    - Appropriate register (formal, instructional)
-   - Terminology consistency
+   - Terminology consistency (check references)
    - Professional tone
 
 4. CONTEXT COHERENCE (Weight: {context_weight}%)
@@ -133,11 +138,13 @@ Provide your evaluation in JSON format:
   "explanation": "Overall assessment"
 }}
 
-For technical content, accuracy and clarity are paramount. Be strict about terminology consistency."""
+For technical content, accuracy and clarity are paramount. Use references to verify terminology. Be strict about terminology consistency."""
     
     def _marketing_template(self) -> str:
         """Marketing/UX copy template."""
         return """You are reviewing customer-facing marketing content translated from {source_lang} to {target_lang}.
+
+{reference_translations}
 
 {context_before}
 
@@ -150,13 +157,13 @@ Target: {target_text}
 Evaluate the target translation for marketing content:
 
 1. STYLE & TONE (Weight: {style_weight}%)
-   - Brand voice consistency
+   - Brand voice consistency (compare with references)
    - Emotional resonance
    - Persuasiveness
    - Cultural appropriateness
 
 2. ACCURACY (Weight: {accuracy_weight}%)
-   - Core message preserved
+   - Core message preserved (verify with references)
    - Key selling points maintained
    - No factual errors
 
@@ -191,13 +198,15 @@ Provide your evaluation in JSON format:
   "explanation": "Overall assessment"
 }}
 
-For marketing content, engagement and cultural adaptation matter most. A translation that sounds native and compelling is better than a literal one."""
+For marketing content, engagement and cultural adaptation matter most. Use references to understand tone and style. A translation that sounds native and compelling is better than a literal one."""
     
     def _legal_template(self) -> str:
         """Legal/compliance content template."""
         return """You are reviewing legal/compliance documentation translated from {source_lang} to {target_lang}.
 
 CRITICAL: This is legal content. Accuracy is paramount.
+
+{reference_translations}
 
 {context_before}
 
@@ -210,10 +219,10 @@ Target: {target_text}
 Evaluate the target translation for legal content:
 
 1. ACCURACY (Weight: {accuracy_weight}%)
-   - ABSOLUTE semantic equivalence
+   - ABSOLUTE semantic equivalence (verify with references)
    - No interpretation or paraphrasing
    - All conditions, obligations, and rights preserved
-   - Legal terminology precision
+   - Legal terminology precision (compare with references)
    - No omissions or additions
 
 2. COMPLETENESS (Weight: 20%)
@@ -227,7 +236,7 @@ Evaluate the target translation for legal content:
    - Grammar accuracy
 
 4. CONSISTENCY (Weight: {context_weight}%)
-   - Term consistency
+   - Term consistency (check references)
    - Structural parallelism
    - Cross-reference accuracy
 
@@ -251,7 +260,7 @@ Provide your evaluation in JSON format:
   "explanation": "Overall assessment"
 }}
 
-Be EXTREMELY strict. Any deviation from source meaning or omission is a critical issue in legal content."""
+Be EXTREMELY strict. Use references to verify terminology and meaning. Any deviation from source meaning or omission is a critical issue in legal content."""
     
     def _ui_strings_template(self) -> str:
         """UI strings template."""
@@ -260,8 +269,10 @@ Be EXTREMELY strict. Any deviation from source meaning or omission is a critical
 Special considerations for UI:
 - Brevity is crucial
 - Clarity over creativity
-- Consistency with UI patterns
+- Consistency with UI patterns (verify with references)
 - Action-oriented language
+
+{reference_translations}
 
 {context_before}
 
@@ -280,12 +291,12 @@ Evaluate the target translation for UI strings:
    - User-friendly language
 
 2. ACCURACY (Weight: {accuracy_weight}%)
-   - Correct meaning
+   - Correct meaning (verify with references)
    - Proper context for UI element
    - Function preserved
 
 3. CONSISTENCY (Weight: {context_weight}%)
-   - Matches established UI terminology
+   - Matches established UI terminology (compare with references)
    - Consistent tone across interface
    - Standard UI conventions
 
@@ -314,4 +325,4 @@ Provide your evaluation in JSON format:
   "explanation": "Overall assessment"
 }}
 
-For UI strings, clarity and brevity are key. Consider if the translation fits typical UI space constraints."""
+For UI strings, clarity and brevity are key. Use references to ensure terminology consistency. Consider if the translation fits typical UI space constraints."""
