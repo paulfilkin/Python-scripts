@@ -9,8 +9,10 @@ An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with supp
   - **Translate (with context)**: Generate translations using reference translations from other languages as context
   - **Evaluate**: Comprehensive 4-dimensional quality assessment of existing translations
 - **Batch Processing**: Upload and process multiple XLIFF files simultaneously
+- **Sampling**: Configurable sampling strategies for cost-effective evaluation of large files
 - **Advanced Evaluation**: 4-dimensional scoring (Accuracy, Fluency, Style, Context Coherence)
 - **Professional Reports**: Detailed PDF reports with charts, issue analysis, and actionable recommendations
+- **API Inspector**: Transparency feature showing sample API requests and responses
 - **CJK Support**: Full Chinese, Japanese, and Korean character support in PDF reports
 - **Async Processing**: High-performance concurrent API calls with configurable rate limiting
 - **Reliability Features**: Response validation, automatic retries, and clear failure markers
@@ -102,7 +104,7 @@ Performs comprehensive quality evaluation of existing target translations using 
 
 **Output**:
 
-- JSON file with detailed segment-by-segment results
+- JSON file with detailed segment-by-segment results (includes sampling metadata)
 - Professional PDF report with charts, statistics, and recommendations
 
 ### Configuration
@@ -116,12 +118,59 @@ Performs comprehensive quality evaluation of existing target translations using 
 - **API Rate Limiting**:
   - **Requests per second** (1-50): Control API call rate to prevent rate limiting
   - **Max concurrent requests** (5-50): Limit simultaneous API calls for reliability
+- **Report Settings**:
+  - **Attention threshold**: Score below which segments appear in "Segments Requiring Attention"
+- **Sampling**: Configure segment sampling for cost-effective processing (see Sampling section)
 
 **Rate Limiting Recommendations:**
 
 - **Maximum Reliability** (slower): 5-10 req/sec, 10-15 concurrent
 - **Balanced** (recommended): 10-15 req/sec, 20-25 concurrent
 - **Maximum Speed** (less reliable): 20-30 req/sec, 30-40 concurrent
+
+### Sampling
+
+For large files or when full evaluation isn't practical due to time or budget constraints, sampling allows evaluation of a representative subset of segments.
+
+**Predefined Strategies:**
+
+| Strategy          | Percentage   | Use Case                                        |
+| ----------------- | ------------ | ----------------------------------------------- |
+| None (100%)       | 100%         | Small files or when full evaluation is required |
+| Quick check (10%) | 10%          | Large projects with known-quality vendor        |
+| Standard (15%)    | 15%          | New vendor, new domain, or medium risk          |
+| Thorough (20%)    | 20%          | High risk or unknown quality                    |
+| Custom            | User-defined | Specific requirements                           |
+
+**Additional Options:**
+
+- **Minimum sample size** (default: 30): Ensures adequate sample even for small percentages
+- **Fixed seed**: Enable reproducible sampling - same segments selected each run
+
+**How Sampling Works:**
+
+- For translation operations: Samples from all segments before processing
+- For evaluation: Samples from valid segments only (after filtering failed/empty translations)
+- Context for evaluation still uses full segment list (proper surrounding context preserved)
+- Original segment order maintained in sample
+- Sampling metadata included in JSON output
+
+**Note**: For regulated or safety-critical content, full evaluation (None/100%) is recommended.
+
+### API Inspector
+
+The **API Inspector** tab provides transparency into the API calls being made during processing. After running any operation, switch to this tab to see:
+
+- **Request details**: Model, token limits, system message, and full user prompt
+- **Response details**: Token usage statistics, raw API response, and parsed evaluation
+- **Per-operation capture**: Separate views for each operation type (Translate no context, Translate with context, Evaluate)
+
+This feature helps with:
+
+- Understanding how prompts are constructed
+- Debugging unexpected evaluation results
+- Verifying correct template usage
+- Monitoring token consumption
 
 ### Output Files
 
@@ -130,13 +179,38 @@ All outputs are saved to the `./outputs/` directory:
 - **Translations**: `filename_translated.xlf` or `filename_translated_context.xlf`
 - **Evaluations**: `filename_evaluation.json` and `filename_evaluation.pdf`
 
+**JSON Output Structure** (for evaluations):
+
+```json
+{
+  "sampling": {
+    "strategy": "Standard (15%)",
+    "sampled": true,
+    "total_valid_segments": 200,
+    "evaluated_segments": 30,
+    "percentage": 15.0,
+    "seed": null
+  },
+  "results": [
+    {
+      "segment_id": "1",
+      "overall_score": 85,
+      "dimensions": {...},
+      "issues": [...],
+      "explanation": "..."
+    }
+  ]
+}
+```
+
 ## Project Structure
 
 ```
 xliff2-qe/
 ├── core/
 │   ├── xliff2_handler.py      # XLIFF 2.0 parsing and manipulation
-│   ├── async_llm_provider.py  # Async OpenAI integration
+│   ├── async_llm_provider.py  # Async OpenAI integration with call capture
+│   ├── sampling.py            # Sampling strategies and selection
 │   ├── api_cache.py           # API credential caching
 │   └── config.py              # Configuration management
 ├── prompts/
@@ -179,6 +253,7 @@ Evaluation reports include:
 - **Clear Failure Markers**: Failed segments marked as `[Translation failed]` for easy identification
 - **Event Loop Safety**: Automatic detection and handling of Streamlit event loop changes
 - **Graceful Degradation**: Processing continues even if individual segments fail
+- **API Call Capture**: First successful call of each type captured for inspection
 
 ## Data Privacy and Licensing
 
