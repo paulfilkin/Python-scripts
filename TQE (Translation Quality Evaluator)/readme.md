@@ -23,8 +23,10 @@ LLM-powered quality evaluation and translation tool for XLIFF 2.0 files.
 
 - Three operation modes: translate (no context), translate (with context), evaluate
 - 4-dimensional quality scoring (Accuracy, Fluency, Style, Context Coherence)
+- Configurable sampling strategies for cost-effective evaluation
 - Professional PDF reports
 - Batch processing with async API calls
+- API Inspector for transparency into LLM calls
 
 ## Workflow
 
