@@ -40,6 +40,43 @@ class AsyncOpenAIProvider:
         
         # Initialize async client
         self.client = AsyncOpenAI(api_key=api_key)
+        
+        # API call capture for transparency
+        self._captured_calls = {
+            'translate_no_context': None,
+            'translate_with_context': None,
+            'evaluate': None
+        }
+        self._capture_lock = None
+    
+    def _get_or_create_capture_lock(self):
+        """Get or create capture lock in current event loop."""
+        self._reset_for_new_loop()
+        if self._capture_lock is None:
+            self._capture_lock = asyncio.Lock()
+        return self._capture_lock
+    
+    def get_captured_call(self, operation: str) -> Optional[Dict[str, Any]]:
+        """Get captured API call for an operation."""
+        return self._captured_calls.get(operation)
+    
+    def clear_captured_calls(self):
+        """Clear all captured calls."""
+        self._captured_calls = {
+            'translate_no_context': None,
+            'translate_with_context': None,
+            'evaluate': None
+        }
+    
+    async def _capture_call(self, operation: str, request: Dict[str, Any], response: Dict[str, Any]):
+        """Capture the first successful call for an operation."""
+        lock = self._get_or_create_capture_lock()
+        async with lock:
+            if self._captured_calls.get(operation) is None:
+                self._captured_calls[operation] = {
+                    'request': request,
+                    'response': response
+                }
     
     def _reset_for_new_loop(self):
         """Reset locks when we detect a new event loop."""
@@ -48,8 +85,9 @@ class AsyncOpenAIProvider:
             if self._current_loop_id != current_loop:
                 self._rate_limit_lock = None
                 self._semaphore = None
+                self._capture_lock = None
                 self._current_loop_id = current_loop
-        except:
+        except RuntimeError:
             pass
     
     def _get_or_create_lock(self):
@@ -82,7 +120,7 @@ class AsyncOpenAIProvider:
         except Exception as e:
             error_msg = str(e)
             if '401' in error_msg or '403' in error_msg or 'Incorrect API key' in error_msg:
-                print(f"API authentication failed: Check your API key")
+                print("API authentication failed: Check your API key")
             else:
                 print(f"API validation failed: {e}")
             return False
@@ -127,7 +165,7 @@ class AsyncOpenAIProvider:
                 if "```json" in response_text or "```" in response_text or "{" in response_text:
                     return True
                 return False
-            except:
+            except Exception:
                 return False
         
         # For translations, check minimum length
@@ -140,110 +178,193 @@ class AsyncOpenAIProvider:
                                       segments: List[Dict[str, Any]],
                                       source_lang: str,
                                       target_lang: str,
-                                      use_references: bool = False) -> List[Dict[str, Any]]:
+                                      use_references: bool = False,
+                                      max_batch_retries: int = 2) -> List[Dict[str, Any]]:
         """
-        Translate multiple segments concurrently.
+        Translate multiple segments concurrently with automatic retry of failures.
         
         Args:
             segments: List of segment dicts with 'id', 'source', and optionally 'references'
             source_lang: Source language code
             target_lang: Target language code
             use_references: Whether to use reference translations as context
+            max_batch_retries: Number of times to retry failed segments (default: 2)
         
         Returns:
             List of translation results with 'segment_id' and 'translation'
         """
-        tasks = []
-        for segment in segments:
-            task = self._translate_single_segment(
-                segment['source'],
-                segment['id'],
-                source_lang,
-                target_lang,
-                segment.get('references', {}) if use_references else {}
-            )
-            tasks.append(task)
+        # Determine operation type for capture
+        operation = 'translate_with_context' if use_references else 'translate_no_context'
         
-        # Execute all tasks concurrently
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        all_results = {}  # Use dict to track by segment_id - prevents duplicates on retry
+        remaining_segments = segments.copy()
         
-        # Handle exceptions
-        processed_results = []
-        for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                segment = segments[idx]
-                processed_results.append({
-                    'segment_id': segment['id'],
-                    'translation': f"[Translation failed: {str(result)}]",
-                    'error': str(result)
-                })
+        for retry_attempt in range(max_batch_retries + 1):
+            if not remaining_segments:
+                break
+            
+            # Show retry status
+            if retry_attempt > 0:
+                print(f"  Retrying {len(remaining_segments)} failed segments (attempt {retry_attempt + 1}/{max_batch_retries + 1})...")
+            
+            # Create tasks for current batch
+            tasks = []
+            for segment in remaining_segments:
+                task = self._translate_single_segment(
+                    segment['source'],
+                    segment['id'],
+                    source_lang,
+                    target_lang,
+                    segment.get('references', {}) if use_references else {},
+                    operation
+                )
+                tasks.append(task)
+            
+            # Execute all tasks concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results and identify failures
+            failed_segments = []
+            for idx, result in enumerate(results):
+                segment = remaining_segments[idx]
+                segment_id = segment['id']
+                
+                if isinstance(result, Exception):
+                    all_results[segment_id] = {
+                        'segment_id': segment_id,
+                        'translation': '[Translation failed]',
+                        'error': str(result)
+                    }
+                    failed_segments.append(segment)
+                else:
+                    # Check if translation actually failed
+                    if '[Translation failed]' in result.get('translation', ''):
+                        all_results[segment_id] = result
+                        failed_segments.append(segment)
+                    else:
+                        # Success - update result (replaces any previous failure)
+                        all_results[segment_id] = result
+            
+            # Prepare for next retry
+            if retry_attempt < max_batch_retries:
+                remaining_segments = failed_segments
+                # Wait a bit before retrying
+                if failed_segments:
+                    await asyncio.sleep(2.0)
             else:
-                processed_results.append(result)
+                # Final attempt - no more retries
+                remaining_segments = []
         
-        return processed_results
+        # Convert dict back to list in original order
+        final_results = []
+        for segment in segments:
+            if segment['id'] in all_results:
+                final_results.append(all_results[segment['id']])
+        
+        return final_results
     
     async def evaluate_segments_batch(self,
                                      segments_with_context: List[Dict[str, Any]],
                                      prompt_template: str,
-                                     config: dict) -> List[Dict[str, Any]]:
+                                     config: dict,
+                                     max_batch_retries: int = 2) -> List[Dict[str, Any]]:
         """
-        Evaluate multiple segments concurrently.
+        Evaluate multiple segments concurrently with automatic retry of failures.
         
         Args:
             segments_with_context: List of dicts containing segment data and context
             prompt_template: Prompt template for evaluation
             config: Configuration dictionary
+            max_batch_retries: Number of times to retry failed segments (default: 2)
         
         Returns:
             List of evaluation results in same order as input
         """
-        tasks = []
-        for item in segments_with_context:
-            task = self._evaluate_single_segment(
-                item['source'],
-                item['target'],
-                item.get('references', {}),  # Pass reference translations
-                item['context_before'],
-                item['context_after'],
-                item['segment_id'],
-                item['segment_index'],
-                prompt_template,
-                config
-            )
-            tasks.append(task)
+        all_results = {}  # Use dict to track by segment_id - prevents duplicates on retry
+        remaining_items = segments_with_context.copy()
         
-        # Execute all tasks concurrently with progress tracking
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Handle exceptions
-        processed_results = []
-        for idx, result in enumerate(results):
-            if isinstance(result, Exception):
-                # Create error evaluation
-                item = segments_with_context[idx]
-                processed_results.append({
-                    'segment_id': item['segment_id'],
-                    'segment_index': item['segment_index'],
-                    'source': item['source'],
-                    'target': item['target'],
-                    'error': str(result),
-                    'overall_score': None,
-                    'dimensions': {},
-                    'issues': [],
-                    'explanation': f"Evaluation failed: {str(result)}",
-                    'confidence': 0
-                })
+        for retry_attempt in range(max_batch_retries + 1):
+            if not remaining_items:
+                break
+            
+            # Show retry status
+            if retry_attempt > 0:
+                print(f"  Retrying {len(remaining_items)} failed evaluations (attempt {retry_attempt + 1}/{max_batch_retries + 1})...")
+            
+            # Create tasks for current batch
+            tasks = []
+            for item in remaining_items:
+                task = self._evaluate_single_segment(
+                    item['source'],
+                    item['target'],
+                    item.get('references', {}),
+                    item['context_before'],
+                    item['context_after'],
+                    item['segment_id'],
+                    item['segment_index'],
+                    prompt_template,
+                    config
+                )
+                tasks.append(task)
+            
+            # Execute all tasks concurrently
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process results and identify failures
+            failed_items = []
+            for idx, result in enumerate(results):
+                item = remaining_items[idx]
+                segment_id = item['segment_id']
+                
+                if isinstance(result, Exception):
+                    # Create error evaluation
+                    all_results[segment_id] = {
+                        'segment_id': segment_id,
+                        'segment_index': item['segment_index'],
+                        'source': item['source'],
+                        'target': item['target'],
+                        'error': str(result),
+                        'overall_score': None,
+                        'dimensions': {},
+                        'issues': [],
+                        'explanation': f"Evaluation failed: {str(result)}",
+                        'confidence': 0
+                    }
+                    failed_items.append(item)
+                else:
+                    # Check if evaluation actually failed
+                    if result.get('overall_score') is None and 'error' in result:
+                        all_results[segment_id] = result
+                        failed_items.append(item)
+                    else:
+                        # Success - update result (replaces any previous failure)
+                        all_results[segment_id] = result
+            
+            # Prepare for next retry
+            if retry_attempt < max_batch_retries:
+                remaining_items = failed_items
+                # Wait a bit before retrying
+                if failed_items:
+                    await asyncio.sleep(2.0)
             else:
-                processed_results.append(result)
+                # Final attempt - no more retries
+                remaining_items = []
         
-        return processed_results
+        # Convert dict back to list in original order
+        final_results = []
+        for item in segments_with_context:
+            if item['segment_id'] in all_results:
+                final_results.append(all_results[item['segment_id']])
+        
+        return final_results
     
     async def _translate_single_segment(self,
                                        source_text: str,
                                        segment_id: str,
                                        source_lang: str,
                                        target_lang: str,
-                                       references: Dict[str, str]) -> Dict[str, Any]:
+                                       references: Dict[str, str],
+                                       operation: str = 'translate_no_context') -> Dict[str, Any]:
         """Translate a single segment with semaphore control and validation."""
         semaphore = self._get_or_create_semaphore()
         async with semaphore:
@@ -316,6 +437,22 @@ Provide only the translation, no explanation."""
                                 'error': 'Invalid response format after retries'
                             }
                     
+                    # Capture this successful call
+                    await self._capture_call(operation, {
+                        'model': self.model,
+                        'messages': messages,
+                        'token_param': self._get_token_param_name(),
+                        'token_limit': 500
+                    }, {
+                        'translation': translation,
+                        'segment_id': segment_id,
+                        'usage': {
+                            'prompt_tokens': response.usage.prompt_tokens if response.usage else None,
+                            'completion_tokens': response.usage.completion_tokens if response.usage else None,
+                            'total_tokens': response.usage.total_tokens if response.usage else None
+                        }
+                    })
+                    
                     # Success
                     return {
                         'segment_id': segment_id,
@@ -384,7 +521,11 @@ Provide only the translation, no explanation."""
             ]
             
             # Call API with retry logic
-            evaluation = await self._call_api_with_retry(messages, config)
+            evaluation, api_capture = await self._call_api_with_retry_and_capture(messages, config)
+            
+            # Capture the call if successful
+            if api_capture and evaluation.get('overall_score') is not None:
+                await self._capture_call('evaluate', api_capture['request'], api_capture['response'])
             
             # Add metadata
             evaluation['segment_id'] = segment_id
@@ -405,9 +546,10 @@ Provide only the translation, no explanation."""
             
             return evaluation
     
-    async def _call_api_with_retry(self, messages: List[Dict], config: dict,
-                                   max_retries: int = 5) -> Dict[str, Any]:
-        """Call API with exponential backoff, jitter, rate limiting, and response validation."""
+    async def _call_api_with_retry_and_capture(self, messages: List[Dict], config: dict,
+                                               max_retries: int = 5) -> tuple[Dict[str, Any], Optional[Dict[str, Any]]]:
+        """Call API with exponential backoff, jitter, rate limiting, and response validation.
+        Returns tuple of (evaluation_result, capture_data)."""
         base_delay = 1.0
         
         for attempt in range(max_retries):
@@ -430,7 +572,7 @@ Provide only the translation, no explanation."""
                         await asyncio.sleep(0.5 * (attempt + 1))
                         continue
                     else:
-                        return self._error_evaluation("Empty or invalid response from API")
+                        return self._error_evaluation("Empty or invalid response from API"), None
                 
                 # Parse response
                 evaluation = self._parse_response(result_text)
@@ -441,13 +583,32 @@ Provide only the translation, no explanation."""
                         await asyncio.sleep(0.5 * (attempt + 1))
                         continue
                     else:
-                        return self._error_evaluation("Parsed evaluation missing required fields")
+                        return self._error_evaluation("Parsed evaluation missing required fields"), None
                 
-                return evaluation
+                # Prepare capture data
+                capture_data = {
+                    'request': {
+                        'model': self.model,
+                        'messages': messages,
+                        'token_param': self._get_token_param_name(),
+                        'token_limit': api_params.get(self._get_token_param_name())
+                    },
+                    'response': {
+                        'raw_text': result_text,
+                        'parsed': evaluation,
+                        'usage': {
+                            'prompt_tokens': response.usage.prompt_tokens if response.usage else None,
+                            'completion_tokens': response.usage.completion_tokens if response.usage else None,
+                            'total_tokens': response.usage.total_tokens if response.usage else None
+                        }
+                    }
+                }
+                
+                return evaluation, capture_data
                 
             except RateLimitError as e:
                 if attempt == max_retries - 1:
-                    return self._error_evaluation(f"Rate limit exceeded after {max_retries} attempts")
+                    return self._error_evaluation(f"Rate limit exceeded after {max_retries} attempts"), None
                 
                 # Extract retry_after if available
                 retry_after = getattr(e, 'retry_after', None)
@@ -466,7 +627,7 @@ Provide only the translation, no explanation."""
                 
                 # Don't retry on 400 bad request
                 if '400' in error_msg:
-                    return self._error_evaluation(f"API request error: {e}")
+                    return self._error_evaluation(f"API request error: {e}"), None
                 
                 # Retry on server errors (5xx)
                 if any(code in error_msg for code in ['500', '502', '503', '504']):
@@ -476,12 +637,18 @@ Provide only the translation, no explanation."""
                         continue
                 
                 # Don't retry other errors
-                return self._error_evaluation(f"API error: {e}")
+                return self._error_evaluation(f"API error: {e}"), None
             
             except Exception as e:
-                return self._error_evaluation(f"Unexpected error: {e}")
+                return self._error_evaluation(f"Unexpected error: {e}"), None
         
-        return self._error_evaluation("Max retries exceeded")
+        return self._error_evaluation("Max retries exceeded"), None
+    
+    async def _call_api_with_retry(self, messages: List[Dict], config: dict,
+                                   max_retries: int = 5) -> Dict[str, Any]:
+        """Call API with exponential backoff, jitter, rate limiting, and response validation."""
+        result, _ = await self._call_api_with_retry_and_capture(messages, config, max_retries)
+        return result
     
     def _get_token_param_name(self) -> str:
         """Get correct token parameter name for model."""
@@ -537,7 +704,6 @@ Provide only the translation, no explanation."""
         opt = config.get('context_optimization', {})
         MAX_CONTEXT_CHARS = opt.get('max_chars_per_segment', 200)
         MAX_NEIGHBORS = opt.get('max_neighbors_per_side', 4)
-        MIN_LENGTH = opt.get('min_segment_length', 3)
         
         # Format reference translations - MOST IMPORTANT CONTEXT
         reference_text = ""
