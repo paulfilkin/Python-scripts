@@ -23,6 +23,7 @@ LLM-powered quality evaluation and translation tool for XLIFF 2.0 files.
 
 - Three operation modes: translate (no context), translate (with context), evaluate
 - 4-dimensional quality scoring (Accuracy, Fluency, Style, Context Coherence)
+- Cross-language comparative analysis with exportable charts
 - Configurable sampling strategies for cost-effective evaluation
 - Professional PDF reports
 - Batch processing with async API calls
@@ -32,6 +33,7 @@ LLM-powered quality evaluation and translation tool for XLIFF 2.0 files.
 
 1. Use the **Converter** to create XLIFF 2.0 files from aligned text with reference translations
 2. Use the **Evaluation System** to generate or assess translations with comprehensive quality analysis
+3. Use **Cross-Language Analysis** to compare results across languages and translation sources (MT, AI, Human)
 
 ## Requirements
 
