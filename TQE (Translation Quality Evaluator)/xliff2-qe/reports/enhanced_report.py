@@ -82,7 +82,7 @@ def find_and_register_unicode_font():
     return ('Helvetica', 'Helvetica-Bold')
 
 
-def create_evaluation_report(evaluations: list, output_file: Path, config: dict, metadata: dict):
+def create_evaluation_report(evaluations: list, output_file: Path, config: dict, metadata: dict, attention_threshold: float = 70):
     """
     Create comprehensive PDF report from evaluation results.
     
@@ -91,6 +91,7 @@ def create_evaluation_report(evaluations: list, output_file: Path, config: dict,
         output_file: Path for output PDF
         config: Configuration used
         metadata: XLIFF metadata (languages, etc.)
+        attention_threshold: Score below which segments require attention (default: 70)
     """
     doc = SimpleDocTemplate(
         str(output_file), pagesize=A4,
@@ -168,6 +169,8 @@ def create_evaluation_report(evaluations: list, output_file: Path, config: dict,
     
     # Metadata
     report_date = datetime.now().strftime("%d %B %Y, %H:%M")
+    source_filename = output_file.stem.replace('_evaluation', '')  # Remove _evaluation suffix
+    elements.append(Paragraph(f"<b>File:</b> {source_filename}", normal_style))
     elements.append(Paragraph(f"<b>Generated:</b> {report_date}", normal_style))
     elements.append(Paragraph(f"<b>Source Language:</b> {metadata['source_language']}", normal_style))
     elements.append(Paragraph(f"<b>Target Language:</b> {metadata['target_language']}", normal_style))
@@ -301,24 +304,20 @@ def create_evaluation_report(evaluations: list, output_file: Path, config: dict,
     elements.append(Spacer(1, 0.3*cm))
     
     # Segments requiring attention
-    critical_segs = [e for e in valid_evals if e.get('overall_score', 100) < 70]
+    critical_segs = [e for e in valid_evals if e.get('overall_score', 100) < attention_threshold]
     
     if critical_segs:
         elements.append(Paragraph(f"Segments Requiring Attention ({len(critical_segs)})", heading2_style))
         
         issue_rows = [['ID', 'Score', 'Issues', 'Explanation']]
         
-        for eval in sorted(critical_segs, key=lambda e: e.get('overall_score', 0))[:15]:
+        for eval in sorted(critical_segs, key=lambda e: e.get('overall_score', 0)):
             issues_text = ', '.join([i['type'].replace('_', ' ') for i in eval.get('issues', [])])
             explanation = eval.get('explanation', 'No explanation')
             
             # Handle encoding
             if isinstance(explanation, bytes):
                 explanation = explanation.decode('utf-8', errors='replace')
-            
-            # Truncate
-            if len(explanation) > 200:
-                explanation = explanation[:200] + '...'
             
             # Escape XML
             explanation = explanation.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
@@ -346,10 +345,6 @@ def create_evaluation_report(evaluations: list, output_file: Path, config: dict,
         ]))
         
         elements.append(issue_table)
-        
-        if len(critical_segs) > 15:
-            elements.append(Spacer(1, 0.3*cm))
-            elements.append(Paragraph(f"...and {len(critical_segs) - 15} more segments requiring review.", small_style))
     
     elements.append(Spacer(1, 1*cm))
     
