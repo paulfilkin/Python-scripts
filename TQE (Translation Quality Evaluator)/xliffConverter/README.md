@@ -1,100 +1,130 @@
-# XLIFF 2.0 Converter
+1. # XLIFF 2.0 Converter
 
-Convert aligned multilingual text files to XLIFF 2.0 format with reference translations stored as metadata.
+   Convert aligned multilingual text files to XLIFF 2.0 format with reference translations, and populate target languages from translation files.
 
-## Features
+   ## Features
 
-- Manual language code entry (MS LCID format: en-GB, de-DE, fr-FR, etc.)
-- Convert aligned text to valid XLIFF 2.0
-- Store reference translations as metadata (not matches)
-- Batch processing support
-- User-friendly Streamlit interface
-- Compatible with Trados Studio and XLIFF validators
+   - Auto-detect languages with MS LCID format (en-GB, de-DE, fr-FR, etc.)
+   - Convert aligned text to XLIFF 2.0
+   - Store reference translations as metadata
+   - Populate target elements from translation text files
+   - Batch processing support
+   - User-friendly Streamlit interface
 
-## Installation
+   ## Installation
 
-```bash
-pip install -r requirements.txt
-```
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-## Usage
+   ## Usage
 
-```bash
-streamlit run app_simple.py
-```
+   ```bash
+   streamlit run app.py
+   ```
 
-## Input Format
+   ## Tab 1: Text to XLIFF
 
-Text files with aligned translations separated by blank lines:
+   Convert aligned multilingual text files into XLIFF 2.0 format.
 
-```
-My first sentence is this.
-Meine erste Satz lautet so.
-Ma première phrase est celle-ci.
+   ### Input Format
 
-My second sentence looks like this.
-Mein zweiter Satz sieht so aus.
-Ma deuxième phrase ressemble à ceci.
-```
+   Text files with aligned translations separated by blank lines:
 
-## Output Format
+   ```
+   My first sentence is this.
+   Meine erste Satz lautet so.
+   Ma première phrase est celle-ci.
+   
+   My second sentence looks like this.
+   Mein zweiter Satz sieht so aus.
+   Ma deuxième phrase ressemble à ceci.
+   ```
 
-XLIFF 2.0 files with:
+   Or prefixed format:
 
-- Source language in `<source>` elements
-- Reference translations stored as metadata (`<mda:metadata>`)
-- Ready for translation workflow
-- Validates against XLIFF 2.0 specification
+   ```
+   EN: My first sentence is this.
+   DE: Meine erste Satz lautet so.
+   FR: Ma première phrase est celle-ci.
+   
+   EN: My second sentence looks like this.
+   DE: Mein zweiter Satz sieht so aus.
+   FR: Ma deuxième phrase ressemble à ceci.
+   ```
 
-Example structure:
+   ### Output Format
 
-```xml
-<unit id="1">
-  <mda:metadata>
-    <mda:metaGroup category="reference-translations">
-      <mda:meta type="ref-de-DE">Meine erste Satz lautet so.</mda:meta>
-      <mda:meta type="ref-fr-FR">Ma première phrase est celle-ci.</mda:meta>
-    </mda:metaGroup>
-  </mda:metadata>
-  <segment id="1">
-    <source>My first sentence is this.</source>
-  </segment>
-</unit>
-```
+   XLIFF 2.0 files with:
 
-## Workflow
+   - Source language in `<source>` elements
+   - Other languages as reference translations in metadata (`<mda:meta>`)
+   - Ready for translation workflow
 
-1. Upload text file(s)
-2. Parse files to detect number of languages
-3. Enter language codes manually (e.g., en-GB, de-DE, fr-FR)
-4. Select source language
-5. Enter target language code
-6. Choose output options (overwrite/rename/skip)
-7. Convert to XLIFF 2.0
+   ### Workflow
 
-## Project Structure
+   1. Upload text file(s)
+   2. Review detected languages
+   3. Confirm/edit language codes (MS LCID format)
+   4. Select source language
+   5. Select target language
+   6. Choose output options
+   7. Convert to XLIFF 2.0
 
-```
-xliff_converter/
-├── app_simple.py           # Streamlit UI (simplified, no language detection)
-├── core/
-│   ├── text_parser.py      # Parse aligned text files
-│   └── xliff_generator.py  # Generate XLIFF 2.0 with metadata
-├── xliff20_parser.py       # Parse XLIFF 2.0 files (for main system)
-├── requirements.txt        # Python dependencies (streamlit, lxml)
-└── README.md              # This file
-```
+   ## Tab 2: Populate Targets
 
-## Requirements
+   Add translations from text files into existing XLIFF target elements. Supports batch processing with multiple translation files.
 
-- Python 3.x
-- streamlit
-- lxml
+   ### Input
 
-## Notes
+   - 1 XLIFF file (from converter, with source and reference translations)
+   - 1 or more TXT files with translations (one translation per line, matching XLIFF segment order)
 
-- Language codes must follow MS LCID format: xx-YY (e.g., en-GB, de-DE)
-- All files in a batch use the same language configuration
-- Reference translations are stored as metadata for use in translation/evaluation workflows
-- Output files validate against XLIFF 2.0 specification
-- Compatible with Trados Studio and other XLIFF 2.0 tools
+   ### Workflow
+
+   1. Upload XLIFF file
+   2. Upload translation text file(s)
+   3. Enter target language code (MS LCID format, e.g., tr-TR)
+   4. Review validation (segment counts must match line counts)
+   5. Set output filename suffix
+   6. Click "Populate All Targets"
+
+   ### Output
+
+   One populated XLIFF file per translation file:
+
+   - Target language (`trgLang`) attribute updated
+   - `<target>` elements inserted with translations
+   - All reference translations preserved
+
+   ### Example
+
+   Upload:
+
+   - `source_en-ja-pl.xlf` (500 segments)
+   - `turkish_human.txt` (500 lines)
+   - `turkish_machine.txt` (500 lines)
+
+   Set target language: `tr-TR`
+
+   Output:
+
+   - `turkish_human_populated.xlf` (trgLang="tr-TR", 500 targets)
+   - `turkish_machine_populated.xlf` (trgLang="tr-TR", 500 targets)
+
+   ## Project Structure
+
+   ```
+   xliffConverter/
+   ├── core/
+   │   ├── text_parser.py        # Text file parsing (grouped/prefixed formats)
+   │   ├── xliff_generator.py    # XLIFF 2.2 generation
+   │   └── target_populator.py   # Target element population
+   ├── app.py                    # Streamlit UI
+   ├── requirements.txt
+   └── README.md
+   ```
+
+   ## Licence
+
+   This repository is released under **The Unlicense**, placing the contents in the public domain.
