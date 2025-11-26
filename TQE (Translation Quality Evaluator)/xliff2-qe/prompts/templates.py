@@ -1,328 +1,82 @@
 """
-Prompt templates for different content types.
-Each template is optimised for specific translation contexts.
+Prompt templates loaded dynamically from markdown files.
+Each .md file in the prompts folder becomes an available template.
 """
+
+import os
+from pathlib import Path
+from typing import Dict, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class PromptTemplateManager:
-    """Manage and retrieve prompt templates for different content types."""
+    """Load and manage prompt templates from markdown files."""
     
-    def __init__(self):
-        self.templates = {
-            'general': self._general_template(),
-            'technical_documentation': self._technical_template(),
-            'marketing': self._marketing_template(),
-            'legal': self._legal_template(),
-            'ui_strings': self._ui_strings_template()
-        }
+    def __init__(self, prompts_dir: Optional[str] = None):
+        """
+        Initialise the template manager.
+        
+        Args:
+            prompts_dir: Path to prompts folder. Defaults to same directory as this file.
+        """
+        if prompts_dir is None:
+            prompts_dir = Path(__file__).parent
+        else:
+            prompts_dir = Path(prompts_dir)
+        
+        self.prompts_dir = prompts_dir
+        self.templates: Dict[str, str] = {}
+        self._load_templates()
+    
+    def _load_templates(self) -> None:
+        """Scan prompts directory and load all .md files."""
+        if not self.prompts_dir.exists():
+            logger.warning(f"Prompts directory not found: {self.prompts_dir}")
+            return
+        
+        for md_file in self.prompts_dir.glob("*.md"):
+            template_name = md_file.stem  # filename without extension
+            try:
+                content = md_file.read_text(encoding='utf-8')
+                self.templates[template_name] = content
+                logger.debug(f"Loaded template: {template_name}")
+            except Exception as e:
+                logger.error(f"Failed to load template {md_file}: {e}")
+        
+        if self.templates:
+            logger.info(f"Loaded {len(self.templates)} prompt templates: {list(self.templates.keys())}")
+        else:
+            logger.warning("No prompt templates found")
     
     def get_template(self, content_type: str) -> str:
-        """Get prompt template for content type."""
-        return self.templates.get(content_type, self.templates['general'])
+        """
+        Get prompt template for content type.
+        
+        Args:
+            content_type: Name of the template (matches filename without .md)
+        
+        Returns:
+            Template string, or general template if not found, or empty string if no templates.
+        """
+        if content_type in self.templates:
+            return self.templates[content_type]
+        
+        # Fallback to general
+        if 'general' in self.templates:
+            logger.warning(f"Template '{content_type}' not found, using 'general'")
+            return self.templates['general']
+        
+        # No templates available
+        logger.error(f"No template found for '{content_type}' and no fallback available")
+        return ""
     
-    def _general_template(self) -> str:
-        """General purpose evaluation template."""
-        return """You are reviewing a translation from {source_lang} to {target_lang}.
-
-{reference_translations}
-
-{context_before}
-
-Current segment to evaluate:
-Source: {source_text}
-Target: {target_text}
-
-{context_after}
-
-Evaluate the target translation across these dimensions:
-
-1. ACCURACY (Weight: {accuracy_weight}%)
-   - Semantic fidelity to source
-   - No omissions or unwarranted additions
-   - Meaning preservation
-   - Use reference translations to verify correct interpretation
-
-2. FLUENCY (Weight: {fluency_weight}%)
-   - Native-speaker naturalness
-   - Grammar and syntax
-   - Readability
-
-3. STYLE (Weight: {style_weight}%)
-   - Appropriate register and tone
-   - Consistent terminology (compare with references)
-   - Cultural appropriateness
-
-4. CONTEXT COHERENCE (Weight: {context_weight}%)
-   - Consistency with surrounding segments
-   - Proper reference resolution
-   - Logical flow
-
-Provide your evaluation in the following JSON format:
-{{
-  "overall_score": 0-100,
-  "dimensions": {{
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "style": 0-100,
-    "context_coherence": 0-100
-  }},
-  "issues": [
-    {{
-      "type": "accuracy|fluency|style|grammar|context_coherence|terminology",
-      "severity": "critical|major|minor",
-      "description": "Clear explanation of the issue"
-    }}
-  ],
-  "confidence": 0-100,
-  "explanation": "Overall assessment and key points"
-}}
-
-Be strict but fair. Use reference translations to understand intended meaning and verify terminology. Consider context when evaluating consistency."""
+    def list_templates(self) -> list:
+        """Return list of available template names."""
+        return sorted(self.templates.keys())
     
-    def _technical_template(self) -> str:
-        """Technical documentation template."""
-        return """You are reviewing technical documentation translated from {source_lang} to {target_lang}.
-
-{reference_translations}
-
-{context_before}
-
-Current segment to evaluate:
-Source: {source_text}
-Target: {target_text}
-
-{context_after}
-
-Evaluate the target translation for technical content:
-
-1. ACCURACY (Weight: {accuracy_weight}%)
-   - Technical correctness
-   - No omissions of critical information
-   - Precise terminology (verify against references)
-   - Meaning preservation
-
-2. FLUENCY (Weight: {fluency_weight}%)
-   - Native-speaker naturalness
-   - Clear, unambiguous phrasing
-   - Appropriate for technical audience
-
-3. STYLE (Weight: {style_weight}%)
-   - Consistent with technical writing conventions
-   - Appropriate register (formal, instructional)
-   - Terminology consistency (check references)
-   - Professional tone
-
-4. CONTEXT COHERENCE (Weight: {context_weight}%)
-   - Consistency with surrounding segments
-   - Proper cross-references
-   - Logical flow
-   - Procedural clarity maintained
-
-Provide your evaluation in JSON format:
-{{
-  "overall_score": 0-100,
-  "dimensions": {{
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "style": 0-100,
-    "context_coherence": 0-100
-  }},
-  "issues": [
-    {{
-      "type": "accuracy|fluency|style|terminology|context_coherence",
-      "severity": "critical|major|minor",
-      "description": "Clear explanation of the issue"
-    }}
-  ],
-  "confidence": 0-100,
-  "explanation": "Overall assessment"
-}}
-
-For technical content, accuracy and clarity are paramount. Use references to verify terminology. Be strict about terminology consistency."""
-    
-    def _marketing_template(self) -> str:
-        """Marketing/UX copy template."""
-        return """You are reviewing customer-facing marketing content translated from {source_lang} to {target_lang}.
-
-{reference_translations}
-
-{context_before}
-
-Current segment to evaluate:
-Source: {source_text}
-Target: {target_text}
-
-{context_after}
-
-Evaluate the target translation for marketing content:
-
-1. STYLE & TONE (Weight: {style_weight}%)
-   - Brand voice consistency (compare with references)
-   - Emotional resonance
-   - Persuasiveness
-   - Cultural appropriateness
-
-2. ACCURACY (Weight: {accuracy_weight}%)
-   - Core message preserved (verify with references)
-   - Key selling points maintained
-   - No factual errors
-
-3. FLUENCY (Weight: {fluency_weight}%)
-   - Native-speaker quality
-   - Idiomatic usage
-   - Natural, engaging language
-   - Flow and rhythm
-
-4. CONTEXT COHERENCE (Weight: {context_weight}%)
-   - Consistent messaging across segments
-   - Campaign/theme continuity
-   - Call-to-action clarity
-
-Provide your evaluation in JSON format:
-{{
-  "overall_score": 0-100,
-  "dimensions": {{
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "style": 0-100,
-    "context_coherence": 0-100
-  }},
-  "issues": [
-    {{
-      "type": "style|fluency|accuracy|context_coherence|tone",
-      "severity": "critical|major|minor",
-      "description": "Clear explanation of the issue"
-    }}
-  ],
-  "confidence": 0-100,
-  "explanation": "Overall assessment"
-}}
-
-For marketing content, engagement and cultural adaptation matter most. Use references to understand tone and style. A translation that sounds native and compelling is better than a literal one."""
-    
-    def _legal_template(self) -> str:
-        """Legal/compliance content template."""
-        return """You are reviewing legal/compliance documentation translated from {source_lang} to {target_lang}.
-
-CRITICAL: This is legal content. Accuracy is paramount.
-
-{reference_translations}
-
-{context_before}
-
-Current segment to evaluate:
-Source: {source_text}
-Target: {target_text}
-
-{context_after}
-
-Evaluate the target translation for legal content:
-
-1. ACCURACY (Weight: {accuracy_weight}%)
-   - ABSOLUTE semantic equivalence (verify with references)
-   - No interpretation or paraphrasing
-   - All conditions, obligations, and rights preserved
-   - Legal terminology precision (compare with references)
-   - No omissions or additions
-
-2. COMPLETENESS (Weight: 20%)
-   - Nothing omitted
-   - Nothing added
-   - All qualifiers and hedges preserved
-
-3. FLUENCY (Weight: {fluency_weight}%)
-   - Clear, unambiguous phrasing
-   - Appropriate legal register
-   - Grammar accuracy
-
-4. CONSISTENCY (Weight: {context_weight}%)
-   - Term consistency (check references)
-   - Structural parallelism
-   - Cross-reference accuracy
-
-Provide your evaluation in JSON format:
-{{
-  "overall_score": 0-100,
-  "dimensions": {{
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "style": 0-100,
-    "context_coherence": 0-100
-  }},
-  "issues": [
-    {{
-      "type": "accuracy|terminology|omission|addition|ambiguity",
-      "severity": "critical|major|minor",
-      "description": "Clear explanation of the issue"
-    }}
-  ],
-  "confidence": 0-100,
-  "explanation": "Overall assessment"
-}}
-
-Be EXTREMELY strict. Use references to verify terminology and meaning. Any deviation from source meaning or omission is a critical issue in legal content."""
-    
-    def _ui_strings_template(self) -> str:
-        """UI strings template."""
-        return """You are reviewing user interface text translated from {source_lang} to {target_lang}.
-
-Special considerations for UI:
-- Brevity is crucial
-- Clarity over creativity
-- Consistency with UI patterns (verify with references)
-- Action-oriented language
-
-{reference_translations}
-
-{context_before}
-
-Current segment to evaluate:
-Source: {source_text}
-Target: {target_text}
-
-{context_after}
-
-Evaluate the target translation for UI strings:
-
-1. CLARITY & CONCISENESS (Weight: {style_weight}%)
-   - Message clear and unambiguous
-   - Appropriately brief
-   - Action verbs where applicable
-   - User-friendly language
-
-2. ACCURACY (Weight: {accuracy_weight}%)
-   - Correct meaning (verify with references)
-   - Proper context for UI element
-   - Function preserved
-
-3. CONSISTENCY (Weight: {context_weight}%)
-   - Matches established UI terminology (compare with references)
-   - Consistent tone across interface
-   - Standard UI conventions
-
-4. FLUENCY (Weight: {fluency_weight}%)
-   - Natural for UI context
-   - Grammatically correct
-   - No awkward phrasing
-
-Provide your evaluation in JSON format:
-{{
-  "overall_score": 0-100,
-  "dimensions": {{
-    "accuracy": 0-100,
-    "fluency": 0-100,
-    "style": 0-100,
-    "context_coherence": 0-100
-  }},
-  "issues": [
-    {{
-      "type": "clarity|accuracy|consistency|length|tone",
-      "severity": "critical|major|minor",
-      "description": "Clear explanation of the issue"
-    }}
-  ],
-  "confidence": 0-100,
-  "explanation": "Overall assessment"
-}}
-
-For UI strings, clarity and brevity are key. Use references to ensure terminology consistency. Consider if the translation fits typical UI space constraints."""
+    def reload(self) -> None:
+        """Reload all templates from disk."""
+        self.templates.clear()
+        self._load_templates()
