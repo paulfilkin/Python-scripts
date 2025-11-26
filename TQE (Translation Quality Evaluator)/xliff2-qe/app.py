@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 import asyncio
 import json
+from datetime import datetime
 
 from core.xliff2_handler import XLIFF2Handler
 from core.config import get_default_config
@@ -21,6 +22,7 @@ from core.sampling import (
 )
 from prompts.templates import PromptTemplateManager
 from reports.enhanced_report import create_evaluation_report
+from reports.cross_language_report import load_evaluation_json, extract_statistics, create_cross_language_report
 
 
 def get_strategy_key(strategy_name: str) -> str:
@@ -199,7 +201,7 @@ with st.sidebar:
         )
 
 # Main tabs
-main_tab, inspector_tab = st.tabs(["📄 Processing", "🔬 API Inspector"])
+main_tab, cross_lang_tab, inspector_tab = st.tabs(["📄 Processing", "🌐 Cross-Language Analysis", "🔬 API Inspector"])
 
 with main_tab:
     # Main area - File upload
@@ -229,6 +231,7 @@ with main_tab:
         
         # For evaluation: add option for consolidated report and file labels
         file_labels = {}
+        translation_sources = {}
         consolidate_report = False
         
         if operation == "Evaluate" and len(uploaded_files) > 1:
@@ -242,18 +245,42 @@ with main_tab:
             if consolidate_report:
                 st.markdown("**File Labels** (describe how each file was translated):")
                 for uploaded_file in uploaded_files:
-                    default_label = ""
-                    if "context" in uploaded_file.name.lower():
-                        default_label = "Translated with reference context"
-                    elif "translated" in uploaded_file.name.lower():
-                        default_label = "Translated without context"
+                    col_label, col_source = st.columns([2, 1])
                     
-                    file_labels[uploaded_file.name] = st.text_input(
-                        f"Label for {uploaded_file.name}",
-                        value=default_label,
-                        key=f"label_{uploaded_file.name}",
-                        help="Brief description of translation method (e.g., 'No context', 'With Spanish/German references')"
-                    )
+                    with col_label:
+                        default_label = ""
+                        if "context" in uploaded_file.name.lower():
+                            default_label = "Translated with reference context"
+                        elif "translated" in uploaded_file.name.lower():
+                            default_label = "Translated without context"
+                        
+                        file_labels[uploaded_file.name] = st.text_input(
+                            f"Label for {uploaded_file.name}",
+                            value=default_label,
+                            key=f"label_{uploaded_file.name}",
+                            help="Brief description of translation method"
+                        )
+                    
+                    with col_source:
+                        # Auto-detect source type from filename
+                        default_source = ''
+                        name_upper = uploaded_file.name.upper()
+                        if '-HT' in name_upper or '_HT' in name_upper:
+                            default_source = 'HT'
+                        elif '-MT' in name_upper or '_MT' in name_upper:
+                            default_source = 'MT'
+                        elif '-AI' in name_upper or '_AI' in name_upper or 'GPT' in name_upper:
+                            default_source = 'AI'
+                        elif '-MLT' in name_upper or '_MLT' in name_upper:
+                            default_source = 'MLT'
+                        
+                        translation_sources[uploaded_file.name] = st.selectbox(
+                            "Source type",
+                            options=['', 'MT', 'AI', 'HT', 'MLT', 'Other'],
+                            index=['', 'MT', 'AI', 'HT', 'MLT', 'Other'].index(default_source) if default_source in ['', 'MT', 'AI', 'HT', 'MLT', 'Other'] else 0,
+                            key=f"source_{uploaded_file.name}",
+                            help="MT=Machine, AI=LLM, HT=Human"
+                        )
         
         # Show summary of all files
         for uploaded_file in uploaded_files:
@@ -471,12 +498,22 @@ with main_tab:
                             
                             results = asyncio.run(evaluate())
                             
-                            # Save JSON results with sampling metadata
+                            # Save JSON results with metadata and sampling info
                             json_filename = f"{Path(uploaded_file.name).stem}_evaluation.json"
                             json_path = Path(f"./outputs/{json_filename}")
                             
-                            # Include sampling info in output
+                            # Include metadata and sampling info in output
                             output_data = {
+                                'metadata': {
+                                    'source_language': metadata['source_language'],
+                                    'target_language': metadata['target_language'],
+                                    'source_file': uploaded_file.name,
+                                    'evaluated_at': datetime.now().isoformat(),
+                                    'model': model,
+                                    'content_type': content_type,
+                                    'translation_source': translation_sources.get(uploaded_file.name, ''),
+                                    'label': file_labels.get(uploaded_file.name, '')
+                                },
                                 'sampling': {
                                     'strategy': eval_sampling_info['strategy'],
                                     'sampled': eval_sampling_info['sampled'],
@@ -584,6 +621,197 @@ with main_tab:
     </unit>
   </file>
 </xliff>""", language="xml")
+
+# Cross-Language Analysis Tab
+with cross_lang_tab:
+    st.header("🌐 Cross-Language Analysis")
+    st.markdown("Upload multiple evaluation JSON files to create comparative reports across languages and translation sources.")
+    
+    st.markdown("---")
+    
+    # File upload
+    json_files = st.file_uploader(
+        "Upload evaluation JSON files",
+        type=['json'],
+        accept_multiple_files=True,
+        help="Upload JSON files from previous evaluations",
+        key="cross_lang_upload"
+    )
+    
+    if json_files:
+        st.subheader(f"Loaded {len(json_files)} file(s)")
+        
+        # Process and display each file
+        evaluations = []
+        
+        for json_file in json_files:
+            try:
+                data = json.loads(json_file.read().decode('utf-8'))
+                json_file.seek(0)  # Reset for potential re-read
+                
+                stats = extract_statistics(data)
+                if stats is None:
+                    st.warning(f"⚠️ {json_file.name}: No valid evaluation results")
+                    continue
+                
+                # Extract metadata if present
+                file_metadata = data.get('metadata', {})
+                
+                with st.expander(f"📄 {json_file.name}", expanded=False):
+                    col1, col2, col3 = st.columns(3)
+                    
+                    # Allow user to set/override metadata
+                    with col1:
+                        default_lang = file_metadata.get('target_language', '')
+                        # Try to extract from filename if not in metadata
+                        if not default_lang:
+                            name_lower = json_file.name.lower()
+                            lang_hints = {
+                                'turkish': 'tr-TR', 'german': 'de-DE', 'french': 'fr-FR',
+                                'spanish': 'es-ES', 'italian': 'it-IT', 'portuguese': 'pt-PT',
+                                'dutch': 'nl-NL', 'polish': 'pl-PL', 'russian': 'ru-RU',
+                                'chinese': 'zh-CN', 'japanese': 'ja-JP', 'korean': 'ko-KR',
+                                'arabic': 'ar-SA', 'hebrew': 'he-IL', 'greek': 'el-GR',
+                                'hungarian': 'hu-HU', 'romanian': 'ro-RO', 'finnish': 'fi-FI',
+                                'norwegian': 'nb-NO', 'swedish': 'sv-SE', 'danish': 'da-DK',
+                            }
+                            for hint, code in lang_hints.items():
+                                if hint in name_lower:
+                                    default_lang = code
+                                    break
+                        
+                        language = st.text_input(
+                            "Target language",
+                            value=default_lang,
+                            key=f"lang_{json_file.name}",
+                            help="e.g., tr-TR, de-DE, fr-FR"
+                        )
+                    
+                    with col2:
+                        default_source = file_metadata.get('translation_source', '')
+                        # Try to extract from filename
+                        if not default_source:
+                            name_upper = json_file.name.upper()
+                            if '-HT' in name_upper or '_HT' in name_upper:
+                                default_source = 'HT'
+                            elif '-MT' in name_upper or '_MT' in name_upper:
+                                default_source = 'MT'
+                            elif '-AI' in name_upper or '_AI' in name_upper or 'GPT' in name_upper:
+                                default_source = 'AI'
+                            elif '-MLT' in name_upper or '_MLT' in name_upper:
+                                default_source = 'MLT'
+                        
+                        source_type = st.selectbox(
+                            "Translation source",
+                            options=['', 'MT', 'AI', 'HT', 'MLT', 'Other'],
+                            index=['', 'MT', 'AI', 'HT', 'MLT', 'Other'].index(default_source) if default_source in ['', 'MT', 'AI', 'HT', 'MLT', 'Other'] else 0,
+                            key=f"source_{json_file.name}",
+                            help="MT=Machine Translation, AI=LLM, HT=Human, MLT=Multi-engine"
+                        )
+                    
+                    with col3:
+                        default_label = file_metadata.get('label', '')
+                        if not default_label:
+                            # Generate from language and source
+                            parts = []
+                            if language:
+                                # Extract language name from code
+                                lang_names = {
+                                    'tr-TR': 'Turkish', 'de-DE': 'German', 'fr-FR': 'French',
+                                    'es-ES': 'Spanish', 'it-IT': 'Italian', 'ro-RO': 'Romanian',
+                                    'hu-HU': 'Hungarian', 'el-GR': 'Greek', 'fi-FI': 'Finnish',
+                                    'nb-NO': 'Norwegian', 'sv-SE': 'Swedish',
+                                }
+                                parts.append(lang_names.get(language, language))
+                            if source_type:
+                                parts.append(source_type)
+                            default_label = ' - '.join(parts) if parts else json_file.name
+                        
+                        label = st.text_input(
+                            "Display label",
+                            value=default_label,
+                            key=f"label_{json_file.name}",
+                            help="Label shown in charts"
+                        )
+                    
+                    # Show stats preview
+                    st.markdown("**Quick stats:**")
+                    metric_cols = st.columns(4)
+                    with metric_cols[0]:
+                        st.metric("Average", f"{stats['avg_score']:.1f}")
+                    with metric_cols[1]:
+                        st.metric("Median", f"{stats['median_score']:.1f}")
+                    with metric_cols[2]:
+                        st.metric("Segments", stats['evaluated_segments'])
+                    with metric_cols[3]:
+                        st.metric("Need Review", f"{stats['needing_review_pct']:.1f}%")
+                
+                evaluations.append({
+                    'filename': json_file.name,
+                    'label': label,
+                    'language': language,
+                    'source_type': source_type,
+                    'data': data,
+                    'stats': stats
+                })
+                
+            except Exception as e:
+                st.error(f"❌ {json_file.name}: {e}")
+        
+        if evaluations:
+            st.markdown("---")
+            
+            # Report options
+            col1, col2 = st.columns([2, 1])
+            with col1:
+                report_title = st.text_input(
+                    "Report title",
+                    value="Cross-Language Quality Analysis",
+                    help="Title for the PDF report"
+                )
+            
+            # Generate button
+            if st.button("📊 Generate Comparative Report", type="primary", use_container_width=True):
+                with st.spinner("Generating charts and report..."):
+                    try:
+                        output_dir = Path("./outputs")
+                        pdf_path, chart_paths = create_cross_language_report(
+                            evaluations,
+                            output_dir,
+                            report_title
+                        )
+                        
+                        st.success(f"✅ Report generated: {pdf_path.name}")
+                        
+                        # Show charts
+                        st.subheader("Generated Charts")
+                        
+                        for chart_path in chart_paths:
+                            if chart_path.exists():
+                                st.image(str(chart_path), use_container_width=True)
+                                st.caption(chart_path.name)
+                        
+                        st.balloons()
+                        
+                    except Exception as e:
+                        st.error(f"Error generating report: {e}")
+                        import traceback
+                        st.code(traceback.format_exc())
+    
+    else:
+        st.info("👆 Upload evaluation JSON files to get started")
+        
+        with st.expander("ℹ️ How to use"):
+            st.markdown("""
+            1. **Run evaluations** in the Processing tab for different languages/translation sources
+            2. **Collect the JSON files** from the `outputs` folder
+            3. **Upload them here** to create comparative analysis
+            4. **Tag each file** with language and source type (MT, AI, HT, etc.)
+            5. **Generate report** to get PDF and chart images
+            
+            **Tip:** The system tries to auto-detect language and source type from filenames.
+            Use naming like `Turkish-MT.json` or `German_AI_evaluation.json` for best results.
+            """)
 
 with inspector_tab:
     st.header("🔬 API Inspector")
