@@ -1,6 +1,6 @@
 # XLIFF 2.0 Translation Quality Evaluation System
 
-An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with support for translation generation and comprehensive PDF reporting.
+An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with support for translation generation, comprehensive PDF reporting, and cross-language comparative analysis.
 
 ## Features
 
@@ -8,10 +8,12 @@ An LLM-powered quality evaluation tool for XLIFF 2.0 translation files with supp
   - **Translate (no context)**: Generate translations using source text only
   - **Translate (with context)**: Generate translations using reference translations from other languages as context
   - **Evaluate**: Comprehensive 4-dimensional quality assessment of existing translations
+- **Cross-Language Analysis**: Compare evaluation results across multiple languages and translation sources (MT, AI, Human)
 - **Batch Processing**: Upload and process multiple XLIFF files simultaneously
 - **Sampling**: Configurable sampling strategies for cost-effective evaluation of large files
 - **Advanced Evaluation**: 4-dimensional scoring (Accuracy, Fluency, Style, Context Coherence)
 - **Professional Reports**: Detailed PDF reports with charts, issue analysis, and actionable recommendations
+- **Comparative Reports**: Cross-language PDF reports with exportable chart images for presentations
 - **API Inspector**: Transparency feature showing sample API requests and responses
 - **CJK Support**: Full Chinese, Japanese, and Korean character support in PDF reports
 - **Async Processing**: High-performance concurrent API calls with configurable rate limiting
@@ -104,7 +106,7 @@ Performs comprehensive quality evaluation of existing target translations using 
 
 **Output**:
 
-- JSON file with detailed segment-by-segment results (includes sampling metadata)
+- JSON file with detailed segment-by-segment results (includes metadata and sampling info)
 - Professional PDF report with charts, statistics, and recommendations
 
 ### Configuration
@@ -157,6 +159,40 @@ For large files or when full evaluation isn't practical due to time or budget co
 
 **Note**: For regulated or safety-critical content, full evaluation (None/100%) is recommended.
 
+### Cross-Language Analysis
+
+The **Cross-Language Analysis** tab allows comparison of evaluation results across multiple languages and translation sources. This is useful for comparing MT vs AI vs Human translation quality, or analysing quality variations across different target languages.
+
+**Workflow:**
+
+1. Run evaluations in the Processing tab for different languages/translation sources
+2. Collect the JSON files from the `outputs` folder
+3. Upload them to the Cross-Language Analysis tab
+4. Tag each file with language code and source type (if not auto-detected)
+5. Generate comparative report
+
+**Auto-Detection:**
+
+The system attempts to detect language and source type from filenames:
+
+- Language hints: `turkish`, `german`, `french`, etc. → corresponding locale codes
+- Source hints: `-HT`, `-MT`, `-AI`, `-MLT`, `GPT` → corresponding source types
+
+**Recommended naming**: `Turkish-MT_evaluation.json`, `German_AI_evaluation.json`
+
+**Generated Charts:**
+
+1. **Overall Score Comparison**: Horizontal bar chart comparing average scores across all evaluations
+2. **Clustered Comparison**: Grouped bar chart comparing source types (MT/AI/HT) per language
+3. **Issue Category Breakdown**: Distribution of issue types by evaluation
+4. **Quality Dimensions Radar**: Overlaid radar charts comparing all 4 dimensions
+5. **Segments Needing Review**: Percentage of segments scoring below threshold
+
+**Output:**
+
+- PDF report (landscape A4) with summary table and all charts
+- Individual PNG files for each chart (for use in presentations)
+
 ### API Inspector
 
 The **API Inspector** tab provides transparency into the API calls being made during processing. After running any operation, switch to this tab to see:
@@ -178,11 +214,23 @@ All outputs are saved to the `./outputs/` directory:
 
 - **Translations**: `filename_translated.xlf` or `filename_translated_context.xlf`
 - **Evaluations**: `filename_evaluation.json` and `filename_evaluation.pdf`
+- **Cross-Language Reports**: `cross_language_report_TIMESTAMP.pdf`
+- **Chart Images**: `chart_scores_TIMESTAMP.png`, `chart_clustered_TIMESTAMP.png`, etc.
 
 **JSON Output Structure** (for evaluations):
 
 ```json
 {
+  "metadata": {
+    "source_language": "en-GB",
+    "target_language": "tr-TR",
+    "source_file": "Turkish-MT.xlf",
+    "evaluated_at": "2025-05-20T14:30:00",
+    "model": "gpt-5-mini",
+    "content_type": "general",
+    "translation_source": "MT",
+    "label": "Turkish Machine Translation"
+  },
   "sampling": {
     "strategy": "Standard (15%)",
     "sampled": true,
@@ -203,6 +251,8 @@ All outputs are saved to the `./outputs/` directory:
 }
 ```
 
+The `metadata` block enables automatic language and source detection when files are loaded into Cross-Language Analysis. For JSON files without metadata (from older evaluations), the UI allows manual tagging.
+
 ## Project Structure
 
 ```
@@ -216,7 +266,9 @@ xliff2-qe/
 ├── prompts/
 │   └── templates.py           # Content-specific evaluation templates
 ├── reports/
-│   └── enhanced_report.py     # PDF report generation
+│   ├── enhanced_report.py     # PDF report generation
+│   ├── consolidated_report.py # Multi-file comparison reports
+│   └── cross_language_report.py # Cross-language comparative analysis
 ├── app.py                     # Streamlit UI
 ├── requirements.txt
 ├── .env.template
@@ -234,6 +286,13 @@ Evaluation reports include:
 - **Detailed Results**:
   - Segments requiring attention (lowest scores with explanations)
   - Excellent quality samples (highest scores with source/target text)
+
+**Cross-Language Reports include:**
+
+- **Summary Table**: All evaluations ranked by average score with key metrics
+- **Overall Statistics**: Combined averages across all evaluations
+- **Comparative Charts**: Visual comparison of scores, dimensions, and issues
+- **Exportable Images**: Individual PNG files for presentation use
 
 **Unicode & CJK Support**: Reports automatically detect and use appropriate fonts for Chinese, Japanese, Korean, and other non-Latin scripts. Supported fonts include Noto Sans CJK, WQY MicroHei, MS Gothic/YaHei, and PingFang.
 
@@ -319,6 +378,14 @@ If settings seem stuck or not updating:
 1. Click **"Clear All & Start Fresh"** button in sidebar
 2. Or refresh the browser page
 3. Re-upload files and adjust settings
+
+### Cross-Language Analysis Issues
+
+If language/source type not detected:
+
+1. Use recommended filename format: `Language-Source_evaluation.json`
+2. Manually set values in the expandable file sections
+3. Ensure JSON files contain valid evaluation results
 
 ## Contributing
 
