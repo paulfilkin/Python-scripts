@@ -1,4 +1,4 @@
-1. # XLIFF 2.0 Converter
+# XLIFF 2.0 Converter
 
    Convert aligned multilingual text files to XLIFF 2.0 format with reference translations, and populate target languages from translation files.
 
