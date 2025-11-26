@@ -1,5 +1,5 @@
 """
-XLIFF 2.2 generator with candidate matches for approved translations.
+XLIFF 2.0 generator with candidate matches for approved translations.
 Generates multilingual XLIFF files where non-source languages are stored as reference matches.
 """
 
